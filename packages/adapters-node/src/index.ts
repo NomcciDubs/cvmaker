@@ -19,6 +19,8 @@ import type {
   ObjectStore,
   PdfArchiveRecord,
   PdfArchiveRepository,
+  PdfExportCommitResult,
+  PdfExportLimits,
   PdfQuotaSettingsRepository,
   PhotoRecord,
   PhotoRepository,
@@ -138,63 +140,65 @@ export class InMemoryCvRepository implements CvRepository {
 }
 
 export class InMemoryCvInputRepository implements CvInputRepository {
-  private readonly records = new Map<string, CvInputRecord>();
+  private readonly records = new Map<string, { ownerId: string; record: CvInputRecord }>();
 
   constructor(private readonly clock: Clock) {}
 
-  async list(userId: string): Promise<CvInputRecord[]> {
-    return this.byUser(userId).map((record) => structuredClone(record));
+  async list(userId: string, limit: number): Promise<CvInputRecord[]> {
+    return [...this.records.values()]
+      .filter((stored) => stored.ownerId === userId)
+      .map((stored) => stored.record)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, limit)
+      .map((record) => structuredClone(record));
   }
 
-  async save(userId: string, input: CvInputInput): Promise<CvInputRecord> {
-    const key = `${userId}:${input.id}`;
-    const previous = this.records.get(key);
+  async save(userId: string, input: CvInputInput): Promise<CvInputRecord | null> {
+    const previous = this.records.get(input.id);
+    if (previous && previous.ownerId !== userId) return null;
     const now = this.clock.now().toISOString();
     const record: CvInputRecord = {
       ...structuredClone(input),
-      createdAt: previous?.createdAt ?? now,
+      createdAt: previous?.record.createdAt ?? now,
       updatedAt: now,
     };
-    this.records.set(key, record);
+    this.records.set(input.id, { ownerId: userId, record });
     return structuredClone(record);
-  }
-
-  private byUser(userId: string): CvInputRecord[] {
-    return [...this.records]
-      .filter(([key]) => key.startsWith(`${userId}:`))
-      .map(([, record]) => record)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 }
 
 export class InMemoryApplicationRepository implements ApplicationRepository {
-  private readonly records = new Map<string, ApplicationRecord>();
+  private readonly records = new Map<string, { ownerId: string; record: ApplicationRecord }>();
 
   constructor(private readonly ids: IdGenerator, private readonly clock: Clock) {}
 
-  async list(userId: string): Promise<ApplicationRecord[]> {
-    return this.byUser(userId).map((record) => structuredClone(record));
+  async list(userId: string, limit: number): Promise<ApplicationRecord[]> {
+    return [...this.records.values()]
+      .filter((stored) => stored.ownerId === userId)
+      .map((stored) => stored.record)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map((record) => structuredClone(record));
   }
 
   async save(userId: string, input: ApplicationInput): Promise<ApplicationRecord> {
     const id = this.ids.generate();
+    if (this.records.has(id)) throw new Error("Application id collision");
     const now = this.clock.now().toISOString();
-    const record: ApplicationRecord = { ...structuredClone(input), id, createdAt: now, updatedAt: now };
-    this.records.set(`${userId}:${id}`, record);
+    const record: ApplicationRecord = {
+      ...structuredClone(input),
+      id,
+      status: input.status || "draft",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.records.set(id, { ownerId: userId, record });
     return structuredClone(record);
-  }
-
-  private byUser(userId: string): ApplicationRecord[] {
-    return [...this.records]
-      .filter(([key]) => key.startsWith(`${userId}:`))
-      .map(([, record]) => record)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 }
 
 export class InMemoryUsageRepository implements UsageRepository {
   private readonly aiUses = new Map<string, number>();
-  private readonly pdfUses = new Map<string, number>();
   private readonly importWorkflows = new Map<string, {
     userId: string;
     cvHash: string;
@@ -208,14 +212,6 @@ export class InMemoryUsageRepository implements UsageRepository {
 
   async tryConsumeAiUse(userId: string, date: string, limit: number | null): Promise<boolean> {
     return this.tryConsume(this.aiUses, userId, date, limit);
-  }
-
-  async getPdfUsage(userId: string, date: string): Promise<number> {
-    return this.pdfUses.get(`${userId}:${date}`) ?? 0;
-  }
-
-  async tryConsumePdfUse(userId: string, date: string, limit: number | null): Promise<boolean> {
-    return this.tryConsume(this.pdfUses, userId, date, limit);
   }
 
   async createImportWorkflow(userId: string, workflowId: string, cvHash: string, expiresAt: Date): Promise<void> {
@@ -246,7 +242,7 @@ export class InMemoryUsageRepository implements UsageRepository {
 }
 
 export class InMemoryPhotoRepository implements PhotoRepository {
-  private readonly records = new Map<string, PhotoRecord>();
+  private readonly records = new Map<string, { ownerId: string; record: PhotoRecord }>();
 
   constructor(private readonly ids: IdGenerator, private readonly clock: Clock) {}
 
@@ -258,37 +254,67 @@ export class InMemoryPhotoRepository implements PhotoRepository {
     const existing = this.byUser(userId);
     let deletedOldest = false;
     if (maxPhotos > 0 && existing.length >= maxPhotos) {
-      this.records.delete(`${userId}:${existing[0]!.id}`);
+      this.records.delete(existing[0]!.id);
       deletedOldest = true;
     }
 
+    const id = this.ids.generate();
+    if (this.records.has(id)) throw new Error("Photo id collision");
     const photo: PhotoRecord = {
-      id: this.ids.generate(),
+      id,
       name,
       dataUrl,
       createdAt: this.clock.now().toISOString(),
     };
-    this.records.set(`${userId}:${photo.id}`, photo);
-    return { photo: structuredClone(photo), deletedOldest };
+    this.records.set(photo.id, { ownerId: userId, record: photo });
+    return { id: photo.id, deletedOldest };
   }
 
   async delete(userId: string, id: string): Promise<boolean> {
-    return this.records.delete(`${userId}:${id}`);
+    const stored = this.records.get(id);
+    if (!stored || stored.ownerId !== userId) return false;
+    return this.records.delete(id);
   }
 
   private byUser(userId: string): PhotoRecord[] {
-    return [...this.records]
-      .filter(([key]) => key.startsWith(`${userId}:`))
-      .map(([, record]) => record)
+    return [...this.records.values()]
+      .filter((stored) => stored.ownerId === userId)
+      .map((stored) => stored.record)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 }
 
 export class InMemoryPdfArchiveRepository implements PdfArchiveRepository {
-  private readonly records = new Map<string, PdfArchiveRecord>();
+  private readonly records = new Map<string, { ownerId: string; record: PdfArchiveRecord }>();
+  private readonly dailyUses = new Map<string, number>();
 
-  async create(userId: string, record: PdfArchiveRecord): Promise<void> {
-    this.records.set(`${userId}:${record.id}`, structuredClone(record));
+  async tryCommitExport(
+    userId: string,
+    date: string,
+    record: PdfArchiveRecord,
+    limits: PdfExportLimits,
+  ): Promise<PdfExportCommitResult> {
+    const archives = this.byUser(userId);
+    const duplicate = record.contentHash
+      ? archives.find((candidate) => candidate.contentHash === record.contentHash)
+      : undefined;
+    if (duplicate) return { status: "duplicate", archive: structuredClone(duplicate) };
+
+    const usageKey = `${userId}:${date}`;
+    const dailyUses = this.dailyUses.get(usageKey) ?? 0;
+    if (limits.daily !== null && dailyUses >= limits.daily) return { status: "daily_limit_reached" };
+    if (archives.length >= limits.maxArchivedPdfs) return { status: "archive_count_limit_reached" };
+    if (archives.reduce((total, archive) => total + archive.sizeBytes, 0) + record.sizeBytes > limits.maxArchivedPdfBytes) {
+      return { status: "archive_size_limit_reached" };
+    }
+    if (this.records.has(record.id)) throw new Error("PDF archive id collision");
+    if ([...this.records.values()].some((stored) => stored.record.objectKey === record.objectKey)) {
+      throw new Error("PDF archive object key collision");
+    }
+
+    this.records.set(record.id, { ownerId: userId, record: structuredClone(record) });
+    this.dailyUses.set(usageKey, dailyUses + 1);
+    return { status: "created" };
   }
 
   async list(userId: string, limit: number): Promise<PdfArchiveRecord[]> {
@@ -306,18 +332,20 @@ export class InMemoryPdfArchiveRepository implements PdfArchiveRepository {
   }
 
   async find(userId: string, id: string): Promise<PdfArchiveRecord | null> {
-    const record = this.records.get(`${userId}:${id}`);
-    return record ? structuredClone(record) : null;
+    const stored = this.records.get(id);
+    return stored?.ownerId === userId ? structuredClone(stored.record) : null;
   }
 
   async delete(userId: string, id: string): Promise<boolean> {
-    return this.records.delete(`${userId}:${id}`);
+    const stored = this.records.get(id);
+    if (!stored || stored.ownerId !== userId) return false;
+    return this.records.delete(id);
   }
 
   private byUser(userId: string): PdfArchiveRecord[] {
-    return [...this.records]
-      .filter(([key]) => key.startsWith(`${userId}:`))
-      .map(([, record]) => record)
+    return [...this.records.values()]
+      .filter((stored) => stored.ownerId === userId)
+      .map((stored) => stored.record)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 }
@@ -340,13 +368,13 @@ export class InMemoryPdfQuotaSettingsRepository implements PdfQuotaSettingsRepos
 
 const EMPTY_ADMIN_METRICS: AdminMetrics = {
   totals: { applications: 0, users: 0, companies: 0 },
-  savedCvs: 0,
-  aiUses: 0,
+  savedCvs: { savedCvs: 0 },
+  usage: { aiUses: 0, aiUsers: 0 },
   topCompanies: [],
   recentApplications: [],
 };
 
-export class InMemoryAdminMetricsRepository implements AdminMetricsRepository {
+export class FixtureAdminMetricsRepository implements AdminMetricsRepository {
   constructor(private readonly metrics: AdminMetrics = EMPTY_ADMIN_METRICS) {}
 
   async getMetrics(): Promise<AdminMetrics> {

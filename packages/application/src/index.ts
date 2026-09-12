@@ -1,6 +1,7 @@
 import type {
   ApplicationInput,
   CvData,
+  CvStyle,
   Language,
   PdfQuotaSettings,
   Principal,
@@ -42,18 +43,19 @@ export interface CvInputRecord extends CvInputInput {
 }
 
 export interface CvInputRepository {
-  list(userId: string): Promise<CvInputRecord[]>;
-  save(userId: string, input: CvInputInput): Promise<CvInputRecord>;
+  list(userId: string, limit: number): Promise<CvInputRecord[]>;
+  save(userId: string, input: CvInputInput): Promise<CvInputRecord | null>;
 }
 
 export interface ApplicationRecord extends ApplicationInput {
   id: string;
+  status: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ApplicationRepository {
-  list(userId: string): Promise<ApplicationRecord[]>;
+  list(userId: string, limit: number): Promise<ApplicationRecord[]>;
   save(userId: string, input: ApplicationInput): Promise<ApplicationRecord>;
 }
 
@@ -62,8 +64,6 @@ export interface UsageRepository {
   tryConsumeAiUse(userId: string, date: string, limit: number | null): Promise<boolean>;
   createImportWorkflow(userId: string, workflowId: string, cvHash: string, expiresAt: Date): Promise<void>;
   tryConsumeImportUse(workflowId: string, userId: string, cvHash: string, now: Date): Promise<boolean>;
-  getPdfUsage(userId: string, date: string): Promise<number>;
-  tryConsumePdfUse(userId: string, date: string, limit: number | null): Promise<boolean>;
 }
 
 export interface PhotoRecord {
@@ -74,7 +74,7 @@ export interface PhotoRecord {
 }
 
 export interface SavedPhoto {
-  photo: PhotoRecord;
+  id: string;
   deletedOldest: boolean;
 }
 
@@ -93,8 +93,21 @@ export interface PdfArchiveRecord {
   createdAt: string;
 }
 
+export interface PdfExportLimits {
+  daily: number | null;
+  maxArchivedPdfs: number;
+  maxArchivedPdfBytes: number;
+}
+
+export type PdfExportCommitResult =
+  | { status: "created" }
+  | { status: "duplicate"; archive: PdfArchiveRecord }
+  | { status: "daily_limit_reached" }
+  | { status: "archive_count_limit_reached" }
+  | { status: "archive_size_limit_reached" };
+
 export interface PdfArchiveRepository {
-  create(userId: string, record: PdfArchiveRecord): Promise<void>;
+  tryCommitExport(userId: string, date: string, record: PdfArchiveRecord, limits: PdfExportLimits): Promise<PdfExportCommitResult>;
   list(userId: string, limit: number): Promise<PdfArchiveRecord[]>;
   findByHash(userId: string, contentHash: string): Promise<PdfArchiveRecord | null>;
   findByFilename(userId: string, filename: string): Promise<PdfArchiveRecord | null>;
@@ -109,10 +122,10 @@ export interface PdfQuotaSettingsRepository {
 
 export interface AdminMetrics {
   totals: { applications: number; users: number; companies: number };
-  savedCvs: number;
-  aiUses: number;
-  topCompanies: Array<{ company: string; count: number }>;
-  recentApplications: Array<{ company: string; role: string; status: string; createdAt: string }>;
+  savedCvs: { savedCvs: number };
+  usage: { aiUses: number; aiUsers: number };
+  topCompanies: Array<{ company: string; applications: number }>;
+  recentApplications: Array<{ company: string; role: string; status: string; language: Language; style: CvStyle; createdAt: string }>;
 }
 
 export interface AdminMetricsRepository {

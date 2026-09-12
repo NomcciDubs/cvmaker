@@ -65,10 +65,11 @@ describe("node adapters", () => {
     const updated = await repository.save("owner-a", { id: "input-1", name: "First edited", content: "two" });
 
     expect(updated.createdAt).toBe("2026-01-02T03:04:05.000Z");
-    expect((await repository.list("owner-a"))[0]!.name).toBe("First edited");
-    expect(await repository.list("owner-b")).toEqual([]);
-    await expect(repository.save("owner-b", { id: "input-1", name: "Stolen", content: "no" })).resolves.toBeTruthy();
-    expect((await repository.list("owner-a"))[0]!.name).toBe("First edited");
+    expect((await repository.list("owner-a", 50))[0]!.name).toBe("First edited");
+    expect(await repository.list("owner-b", 50)).toEqual([]);
+    await expect(repository.save("owner-b", { id: "input-1", name: "Stolen", content: "no" })).resolves.toBeNull();
+    expect(await repository.list("owner-b", 50)).toEqual([]);
+    expect((await repository.list("owner-a", 50))[0]!.name).toBe("First edited");
   });
 
   it("saves applications with server identity and lists them newest first", async () => {
@@ -88,24 +89,21 @@ describe("node adapters", () => {
 
     const saved = await repository.save("owner-a", base);
     await repository.save("owner-a", { ...base, company: "Other", role: "Designer" });
+    await repository.save("owner-a:nested", { ...base, company: "Nested" });
 
     expect(saved.id).toBe("app-1");
-    const records = await repository.list("owner-a");
+    expect(saved.status).toBe("draft");
+    const records = await repository.list("owner-a", 50);
     expect(records.map((record) => record.company)).toEqual(["Other", "Nomcci"]);
-    expect(await repository.list("owner-b")).toEqual([]);
+    expect(await repository.list("owner-b", 50)).toEqual([]);
   });
 
-  it("consumes AI and PDF usage atomically per daily limit", async () => {
+  it("consumes AI usage atomically per daily limit", async () => {
     const repository = new InMemoryUsageRepository();
 
     expect(await repository.tryConsumeAiUse("user", "2026-01-02", 1)).toBe(true);
     expect(await repository.tryConsumeAiUse("user", "2026-01-02", 1)).toBe(false);
     expect(await repository.getAiUsage("user", "2026-01-02")).toBe(1);
-
-    expect(await repository.tryConsumePdfUse("user", "2026-01-02", 2)).toBe(true);
-    expect(await repository.tryConsumePdfUse("user", "2026-01-02", 2)).toBe(true);
-    expect(await repository.tryConsumePdfUse("user", "2026-01-02", 2)).toBe(false);
-    expect(await repository.getPdfUsage("user", "2026-01-02")).toBe(2);
   });
 
   it("validates import workflow ownership, hash, expiry, and single use", async () => {
@@ -131,12 +129,13 @@ describe("node adapters", () => {
     expect(first.deletedOldest).toBe(false);
     expect(third.deletedOldest).toBe(true);
     expect((await repository.list("owner-a")).map((photo) => photo.name)).toEqual(["third", "second"]);
-    expect(await repository.delete("owner-b", third.photo.id)).toBe(false);
-    expect(await repository.delete("owner-a", third.photo.id)).toBe(true);
+    expect(await repository.delete("owner-b", third.id)).toBe(false);
+    expect(await repository.delete("owner-a", third.id)).toBe(true);
   });
 
-  it("finds PDF archives by hash and filename per owner", async () => {
+  it("commits PDF metadata and all quotas atomically", async () => {
     const repository = new InMemoryPdfArchiveRepository();
+    const limits = { daily: 1, maxArchivedPdfs: 2, maxArchivedPdfBytes: 2_048 };
     const record = {
       id: "archive-1",
       filename: "00000000-0000-4000-8000-000000000000-ada.pdf",
@@ -146,16 +145,27 @@ describe("node adapters", () => {
       createdAt: "2026-01-02T03:04:05.000Z",
     };
 
-    await repository.create("owner-a", record);
-    await repository.create("owner-a", { ...record, id: "archive-2", contentHash: null, filename: "other.pdf" });
+    expect(await repository.tryCommitExport("owner-a", "2026-01-02", record, limits)).toEqual({ status: "created" });
+    expect(await repository.tryCommitExport("owner-a", "2026-01-02", { ...record, id: "duplicate", objectKey: "duplicate.pdf" }, limits)).toEqual({
+      status: "duplicate",
+      archive: record,
+    });
+    expect(await repository.tryCommitExport("owner-a", "2026-01-02", {
+      ...record,
+      id: "archive-2",
+      contentHash: "hash-2",
+      filename: "other.pdf",
+      objectKey: "archives/owner-a/output/other.pdf",
+    }, limits)).toEqual({ status: "daily_limit_reached" });
 
     expect(await repository.list("owner-a", 1)).toHaveLength(1);
     expect((await repository.findByHash("owner-a", "hash-1"))?.id).toBe("archive-1");
     expect(await repository.findByHash("owner-b", "hash-1")).toBeNull();
-    expect((await repository.findByFilename("owner-a", "other.pdf"))?.id).toBe("archive-2");
-    expect((await repository.find("owner-a", "archive-2"))?.sizeBytes).toBe(1_024);
-    expect(await repository.delete("owner-a", "archive-2")).toBe(true);
-    expect(await repository.delete("owner-a", "archive-2")).toBe(false);
+    expect((await repository.findByFilename("owner-a", record.filename))?.id).toBe("archive-1");
+    expect((await repository.find("owner-a", "archive-1"))?.sizeBytes).toBe(1_024);
+    expect(await repository.delete("owner-b", "archive-1")).toBe(false);
+    expect(await repository.delete("owner-a", "archive-1")).toBe(true);
+    expect(await repository.delete("owner-a", "archive-1")).toBe(false);
   });
 
   it("reads and updates PDF quota settings", async () => {
