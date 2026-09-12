@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { OpenAiCompatibleChatModel } from "./index";
+import { OpenAiCompatibleChatModel } from "./openai-compatible";
 
 const request = {
   messages: [{ role: "user" as const, content: "hello" }],
@@ -29,6 +29,21 @@ describe("OpenAiCompatibleChatModel", () => {
       temperature: 0.2,
       response_format: { type: "json_object" },
     });
+  });
+
+  it("merges extra headers into the request", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] })));
+    const model = new OpenAiCompatibleChatModel({
+      baseUrl: "http://model.example/v1",
+      model: "m",
+      apiKey: "secret-value",
+      extraHeaders: { "x-app": "cvmaker" },
+      fetch,
+    });
+
+    await model.complete(request);
+    const init = fetch.mock.calls[0]![1];
+    expect(init.headers).toEqual({ "content-type": "application/json", "x-app": "cvmaker", authorization: "Bearer secret-value" });
   });
 
   it("omits authorization and unsupported JSON mode", async () => {
