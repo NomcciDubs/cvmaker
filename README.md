@@ -75,7 +75,7 @@ npm run dev:sqlite:ollama
 npm run dev:mysql:ollama
 ```
 
-The first run downloads the model into the `ollama_data` Docker volume. Change `AI_MODEL` in a private `.env` file to select another installed model.
+The first run downloads the model into the `ollama_data` Docker volume. The base model is `qwen2.5:1.5b` (~1 GB), the smallest Ollama model that keeps reliable bilingual English/Spanish JSON output for the CV prompts. Change `AI_MODEL` in a private `.env` file to select another installed model.
 
 For a remote compatible endpoint, create `.env` from `.env.example` and set:
 
