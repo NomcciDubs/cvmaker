@@ -164,11 +164,29 @@ describe("AI environment selection", () => {
     expect(createCvAiService({ AI_PROVIDER: "ollama", AI_MODEL: "local-model" })).toBeInstanceOf(PortableCvAiService);
   });
 
+  it("creates portable services for configured OpenAI and OpenRouter providers", () => {
+    expect(createCvAiService({
+      AI_PROVIDER: "openai",
+      AI_MODEL: "gpt-4.1-mini",
+      AI_API_KEY: "secret",
+    })).toBeInstanceOf(PortableCvAiService);
+    expect(createCvAiService({
+      AI_PROVIDER: "openrouter",
+      AI_MODEL: "vendor/model",
+      AI_API_KEY: "secret",
+      AI_APP_URL: "https://nomcci.com",
+      AI_APP_NAME: "CVMaker",
+      AI_JSON_MODE: "true",
+    })).toBeInstanceOf(PortableCvAiService);
+  });
+
   it("validates provider configuration", () => {
     expect(() => createCvAiService({ AI_PROVIDER: "openai-compatible", AI_MODEL: "m" })).toThrow("AI_BASE_URL");
     expect(() => createCvAiService({ AI_PROVIDER: "ollama" })).toThrow("AI_MODEL");
     expect(() => createCvAiService({ AI_PROVIDER: "other" })).toThrow("Unsupported AI_PROVIDER");
     expect(() => createCvAiService({ AI_PROVIDER: "ollama", AI_MODEL: "m", AI_TIMEOUT_MS: "zero" })).toThrow("AI_TIMEOUT_MS");
     expect(() => createCvAiService({ AI_PROVIDER: "ollama", AI_MODEL: "m", AI_JSON_MODE: "yes" })).toThrow("AI_JSON_MODE");
+    expect(() => createCvAiService({ AI_PROVIDER: "openai", AI_MODEL: "m" })).toThrow("AI_API_KEY");
+    expect(() => createCvAiService({ AI_PROVIDER: "openrouter", AI_MODEL: "m" })).toThrow("AI_API_KEY");
   });
 });

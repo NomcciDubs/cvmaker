@@ -12,7 +12,7 @@ import {
   NodeIdGenerator,
   NodeSha256Hasher,
 } from "@nomcci/cvmaker-adapters-node";
-import { OpenAiCompatibleChatModel } from "@nomcci/cvmaker-adapters-ai";
+import { OpenAiChatModel, OpenAiCompatibleChatModel, OpenRouterChatModel } from "@nomcci/cvmaker-adapters-ai";
 import { createCvRepository, type ClosableCvRepository } from "@nomcci/cvmaker-adapters-database";
 import { PortableCvAiService } from "@nomcci/cvmaker-ai";
 import type { ApplicationServices, CvAiService, PdfGenerator } from "@nomcci/cvmaker-application";
@@ -59,21 +59,46 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
 export function createCvAiService(environment: NodeJS.ProcessEnv, fetchImplementation?: typeof fetch): CvAiService {
   const provider = environment.AI_PROVIDER?.trim() || "fake";
   if (provider === "fake") return new DeterministicFakeCvAi();
-  if (provider !== "openai-compatible" && provider !== "ollama") {
+  if (provider !== "openai" && provider !== "openrouter" && provider !== "openai-compatible" && provider !== "ollama") {
     throw new Error(`Unsupported AI_PROVIDER: ${provider}`);
   }
 
-  const baseUrl = environment.AI_BASE_URL?.trim() || (provider === "ollama" ? "http://localhost:11434/v1" : "");
-  if (!baseUrl) throw new Error("AI_BASE_URL is required for AI_PROVIDER=openai-compatible");
   const model = environment.AI_MODEL?.trim();
   if (!model) throw new Error(`AI_MODEL is required for AI_PROVIDER=${provider}`);
-
+  const apiKey = environment.AI_API_KEY?.trim();
   const timeoutMs = parseTimeout(environment.AI_TIMEOUT_MS);
   const supportsJsonMode = parseBoolean(environment.AI_JSON_MODE, "AI_JSON_MODE");
+  const baseUrl = environment.AI_BASE_URL?.trim();
+
+  if (provider === "openai" || provider === "openrouter") {
+    if (!apiKey) throw new Error(`AI_API_KEY is required for AI_PROVIDER=${provider}`);
+    return new PortableCvAiService(provider === "openai"
+      ? new OpenAiChatModel({
+          apiKey,
+          model,
+          ...(baseUrl ? { baseUrl } : {}),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+          ...(supportsJsonMode === undefined ? {} : { supportsJsonMode }),
+          ...(fetchImplementation ? { fetch: fetchImplementation } : {}),
+        })
+      : new OpenRouterChatModel({
+          apiKey,
+          model,
+          ...(baseUrl ? { baseUrl } : {}),
+          ...(environment.AI_APP_URL?.trim() ? { refererUrl: environment.AI_APP_URL.trim() } : {}),
+          ...(environment.AI_APP_NAME?.trim() ? { appTitle: environment.AI_APP_NAME.trim() } : {}),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+          ...(supportsJsonMode === undefined ? {} : { supportsJsonMode }),
+          ...(fetchImplementation ? { fetch: fetchImplementation } : {}),
+        }));
+  }
+
+  const compatibleBaseUrl = baseUrl || (provider === "ollama" ? "http://localhost:11434/v1" : "");
+  if (!compatibleBaseUrl) throw new Error("AI_BASE_URL is required for AI_PROVIDER=openai-compatible");
   return new PortableCvAiService(new OpenAiCompatibleChatModel({
-    baseUrl,
+    baseUrl: compatibleBaseUrl,
     model,
-    ...(environment.AI_API_KEY ? { apiKey: environment.AI_API_KEY } : {}),
+    ...(apiKey ? { apiKey } : {}),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(supportsJsonMode === undefined ? {} : { supportsJsonMode }),
     ...(fetchImplementation ? { fetch: fetchImplementation } : {}),
