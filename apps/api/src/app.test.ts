@@ -33,7 +33,44 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
     delete: vi.fn(async () => false),
   };
   const renderer = overrides.renderer ?? { render: vi.fn(() => "<html>injected</html>") };
-  const usage = { getAiUsage: vi.fn(async () => 0), tryConsumeAiUse: vi.fn(), tryConsumeImportUse: vi.fn() };
+  const cvInputs = {
+    list: vi.fn(async () => []),
+    save: vi.fn(async (_userId: string, input) => ({ ...input, createdAt: "2026-09-11T12:00:00.000Z", updatedAt: "2026-09-11T12:00:00.000Z" })),
+  };
+  const applications = {
+    list: vi.fn(async () => []),
+    save: vi.fn(async (_userId: string, input) => ({
+      ...input,
+      id: "00000000-0000-4000-8000-000000000004",
+      status: input.status || "draft",
+      createdAt: "2026-09-11T12:00:00.000Z",
+      updatedAt: "2026-09-11T12:00:00.000Z",
+    })),
+  };
+  const photos = {
+    list: vi.fn(async () => []),
+    save: vi.fn(async () => ({ id: "00000000-0000-4000-8000-000000000003", deletedOldest: false })),
+    delete: vi.fn(async () => false),
+  };
+  const pdfQuotas = {
+    get: vi.fn(async () => ({ defaultDaily: 3, friendDaily: 20, superAdminDaily: null, maxArchivedPdfs: 20, maxArchivedPdfBytes: 26_214_400 })),
+    update: vi.fn(async () => undefined),
+  };
+  const adminMetrics = {
+    getMetrics: vi.fn(async () => ({
+      totals: { applications: 0, users: 0, companies: 0 },
+      savedCvs: { savedCvs: 0 },
+      usage: { aiUses: 0, aiUsers: 0 },
+      topCompanies: [],
+      recentApplications: [],
+    })),
+  };
+  const usage = {
+    getAiUsage: vi.fn(async () => 0),
+    tryConsumeAiUse: vi.fn(),
+    createImportWorkflow: vi.fn(async () => undefined),
+    tryConsumeImportUse: vi.fn(),
+  };
   usage.tryConsumeAiUse.mockResolvedValue(true);
   const ai = {
     import: vi.fn(async () => validRenderRequest.cv),
@@ -42,7 +79,21 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
     translate: vi.fn(async (cv) => cv),
   };
   const clock = { now: () => new Date("2026-09-11T12:00:00.000Z") };
-  return { app: createApi({ auth, cvs, renderer, usage, clock, ai }), auth, cvs, renderer, usage, ai };
+  const ids = { generate: vi.fn(() => "00000000-0000-4000-8000-000000000002") };
+  return {
+    app: createApi({ auth, cvs, cvInputs, applications, photos, pdfQuotas, adminMetrics, renderer, usage, clock, ids, ai }),
+    auth,
+    cvs,
+    cvInputs,
+    applications,
+    photos,
+    pdfQuotas,
+    adminMetrics,
+    renderer,
+    usage,
+    ids,
+    ai,
+  };
 }
 
 describe("API boundaries", () => {
@@ -122,6 +173,96 @@ describe("API boundaries", () => {
     const { app } = fixture({ cvs: { list, save: vi.fn(), delete: vi.fn() } });
     await app.request("/api/cvs", { headers: { authorization: "Bearer valid" } });
     expect(list).toHaveBeenCalledWith(principal.id);
+  });
+
+  it("lists and upserts CV inputs for the authenticated owner", async () => {
+    const result = fixture();
+    const createResponse = await result.app.request("/api/cv-inputs", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({ content: "  Resume text  " }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    expect(await createResponse.json()).toEqual({ id: "00000000-0000-4000-8000-000000000002" });
+    expect(result.cvInputs.save).toHaveBeenCalledWith(principal.id, {
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Imported CV",
+      content: "Resume text",
+    });
+
+    await result.app.request("/api/cv-inputs", { headers: { authorization: "Bearer valid" } });
+    expect(result.cvInputs.list).toHaveBeenCalledWith(principal.id, 50);
+  });
+
+  it("rejects CV input ID collisions without exposing another owner", async () => {
+    const result = fixture();
+    result.cvInputs.save.mockResolvedValueOnce(null);
+    const response = await result.app.request("/api/cv-inputs", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({ id: "00000000-0000-4000-8000-000000000009", content: "Resume" }),
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "id_conflict" });
+  });
+
+  it("validates and stores job applications for the authenticated owner", async () => {
+    const result = fixture();
+    const response = await result.app.request("/api/applications", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({ ...validRenderRequest, company: "Nomcci", role: "Engineer", html: "<p>Ada</p>" }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ id: "00000000-0000-4000-8000-000000000004" });
+    expect(result.applications.save).toHaveBeenCalledWith(principal.id, expect.objectContaining({ company: "Nomcci", role: "Engineer" }));
+
+    await result.app.request("/api/applications", { headers: { authorization: "Bearer valid" } });
+    expect(result.applications.list).toHaveBeenCalledWith(principal.id, 50);
+  });
+
+  it("stores and deletes validated photos for the authenticated owner", async () => {
+    const result = fixture();
+    const createResponse = await result.app.request("/api/photos", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({ dataUrl: "data:image/png;base64,YQ==" }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    expect(result.photos.save).toHaveBeenCalledWith(principal.id, "CV photo", "data:image/png;base64,YQ==", 10);
+
+    const deleteResponse = await result.app.request("/api/photos/00000000-0000-4000-8000-000000000003", {
+      method: "DELETE",
+      headers: { authorization: "Bearer valid" },
+    });
+    expect(deleteResponse.status).toBe(200);
+    expect(result.photos.delete).toHaveBeenCalledWith(principal.id, "00000000-0000-4000-8000-000000000003");
+  });
+
+  it("guards administration and updates validated PDF limits", async () => {
+    const forbidden = fixture();
+    const forbiddenResponse = await forbidden.app.request("/api/admin/metrics", { headers: { authorization: "Bearer valid" } });
+    expect(forbiddenResponse.status).toBe(403);
+    expect(forbidden.adminMetrics.getMetrics).not.toHaveBeenCalled();
+
+    const admin = { ...principal, role: "SUPER_ADMIN" };
+    const result = fixture({ auth: { authenticate: vi.fn(async () => admin) } });
+    const metricsResponse = await result.app.request("/api/admin/metrics", { headers: { authorization: "Bearer valid" } });
+    expect(metricsResponse.status).toBe(200);
+    expect(result.adminMetrics.getMetrics).toHaveBeenCalledOnce();
+
+    const limits = { defaultDaily: 3, friendDaily: 20, superAdminDaily: null, maxArchivedPdfs: 20, maxArchivedPdfBytes: 26_214_400 };
+    const limitsResponse = await result.app.request("/api/admin/pdf-limits", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(limits),
+    });
+    expect(limitsResponse.status).toBe(200);
+    expect(await limitsResponse.json()).toEqual({ limits });
+    expect(result.pdfQuotas.update).toHaveBeenCalledWith(limits);
   });
 });
 

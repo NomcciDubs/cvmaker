@@ -1,13 +1,30 @@
-import type { AuthGateway, Clock, CvAiService, CvRenderer, CvRepository, UsageRepository } from "@nomcci/cvmaker-application";
+import type {
+  AdminMetricsRepository,
+  ApplicationRepository,
+  AuthGateway,
+  Clock,
+  CvAiService,
+  CvInputRepository,
+  CvRenderer,
+  CvRepository,
+  IdGenerator,
+  PdfQuotaSettingsRepository,
+  PhotoRepository,
+  UsageRepository,
+} from "@nomcci/cvmaker-application";
 import {
+  applicationInputSchema,
+  cvInputRequestSchema,
   importCvRequestSchema,
   modifyCvRequestSchema,
+  pdfQuotaSettingsSchema,
+  photoRequestSchema,
   renderCvRequestSchema,
   rewriteCvRequestSchema,
   savedCvInputSchema,
   translateCvRequestSchema,
 } from "@nomcci/cvmaker-contracts";
-import { aiDailyLimitFor, type CvData, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
+import { aiDailyLimitFor, type ApplicationInput, type CvData, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -15,10 +32,16 @@ import { z } from "zod";
 export interface ApiDependencies {
   auth: AuthGateway;
   cvs: CvRepository;
+  cvInputs: CvInputRepository;
+  applications: ApplicationRepository;
+  photos: PhotoRepository;
+  pdfQuotas: PdfQuotaSettingsRepository;
+  adminMetrics: AdminMetricsRepository;
   renderer: CvRenderer;
   ai: CvAiService;
   usage: UsageRepository;
   clock: Clock;
+  ids: IdGenerator;
   developmentLogin?: {
     enabled: boolean;
     sessionToken: string;
@@ -85,6 +108,81 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
       session: { expiresAt: new Date(now.getTime() + 8 * 60 * 60 * 1_000).toISOString() },
       usage: { used, limit: aiDailyLimitFor(principal.role) },
     });
+  });
+
+  app.get("/api/cv-inputs", async (context) => {
+    const inputs = await dependencies.cvInputs.list(context.get("principal").id, 50);
+    return context.json({ inputs });
+  });
+
+  app.post("/api/cv-inputs", async (context) => {
+    const parsed = cvInputRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    const record = await dependencies.cvInputs.save(context.get("principal").id, {
+      id: parsed.data.id ?? dependencies.ids.generate(),
+      name: parsed.data.name,
+      content: parsed.data.content,
+    });
+    if (!record) return context.json({ error: "id_conflict" }, 409);
+    return context.json({ id: record.id }, 201);
+  });
+
+  app.get("/api/applications", async (context) => {
+    const applications = await dependencies.applications.list(context.get("principal").id, 50);
+    return context.json({ applications });
+  });
+
+  app.post("/api/applications", async (context) => {
+    const parsed = applicationInputSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    const record = await dependencies.applications.save(
+      context.get("principal").id,
+      toDomainValue<ApplicationInput>(parsed.data),
+    );
+    return context.json({ id: record.id }, 201);
+  });
+
+  app.get("/api/photos", async (context) => {
+    const photos = await dependencies.photos.list(context.get("principal").id);
+    return context.json({ photos });
+  });
+
+  app.post("/api/photos", async (context) => {
+    const parsed = photoRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    const saved = await dependencies.photos.save(
+      context.get("principal").id,
+      parsed.data.name,
+      parsed.data.dataUrl,
+      10,
+    );
+    return context.json(saved, 201);
+  });
+
+  app.delete("/api/photos/:id", async (context) => {
+    const parsedId = idSchema.safeParse(context.req.param("id"));
+    if (!parsedId.success) return context.json(validationError(parsedId.error), 400);
+    await dependencies.photos.delete(context.get("principal").id, parsedId.data);
+    return context.json({ ok: true });
+  });
+
+  app.get("/api/admin/metrics", async (context) => {
+    if (context.get("principal").role !== "SUPER_ADMIN") return context.json({ error: "forbidden" }, 403);
+    return context.json({ metrics: await dependencies.adminMetrics.getMetrics() });
+  });
+
+  app.get("/api/admin/pdf-limits", async (context) => {
+    if (context.get("principal").role !== "SUPER_ADMIN") return context.json({ error: "forbidden" }, 403);
+    return context.json({ limits: await dependencies.pdfQuotas.get() });
+  });
+
+  app.post("/api/admin/pdf-limits", async (context) => {
+    if (context.get("principal").role !== "SUPER_ADMIN") return context.json({ error: "forbidden" }, 403);
+    const parsed = pdfQuotaSettingsSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    const limits = toDomainValue<PdfQuotaSettings>(parsed.data);
+    await dependencies.pdfQuotas.update(limits);
+    return context.json({ limits });
   });
 
   app.post("/api/cv/render", async (context) => {

@@ -54,10 +54,16 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
   const app = createApi({
     auth: services.auth,
     cvs: services.cvs,
+    cvInputs: services.cvInputs,
+    applications: services.applications,
+    photos: services.photos,
+    pdfQuotas: services.pdfQuotas,
+    adminMetrics: services.adminMetrics,
     renderer: services.renderer,
     ai: services.ai,
     usage: services.usage,
     clock: services.clock,
+    ids: services.ids,
     developmentLogin: { enabled: options.enableLogin ?? true, sessionToken: DEVELOPMENT_SESSION },
   });
 
