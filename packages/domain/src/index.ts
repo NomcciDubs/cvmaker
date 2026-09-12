@@ -111,3 +111,24 @@ export function aiDailyLimitFor(role: string): number | null {
   if (role === "SUPER_ADMIN") return null;
   return role === "FRIEND" ? 10 : 1;
 }
+
+export interface PdfQuotaSettings {
+  defaultDaily: number;
+  friendDaily: number;
+  superAdminDaily: number | null;
+  maxArchivedPdfs: number;
+  maxArchivedPdfBytes: number;
+}
+
+export const DEFAULT_PDF_QUOTA_SETTINGS: PdfQuotaSettings = {
+  defaultDaily: 3,
+  friendDaily: 20,
+  superAdminDaily: null,
+  maxArchivedPdfs: 20,
+  maxArchivedPdfBytes: 26_214_400,
+};
+
+export function pdfDailyLimitFor(role: string, settings: PdfQuotaSettings): number | null {
+  if (role === "SUPER_ADMIN") return settings.superAdminDaily;
+  return role === "FRIEND" ? settings.friendDaily : settings.defaultDaily;
+}

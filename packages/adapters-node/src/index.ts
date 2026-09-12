@@ -3,18 +3,29 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
 import type {
+  AdminMetrics,
+  AdminMetricsRepository,
+  ApplicationRecord,
   ApplicationRepository,
   AuthGateway,
   Clock,
   ContentHasher,
   CvAiService,
+  CvInputInput,
+  CvInputRecord,
   CvInputRepository,
   CvRepository,
   IdGenerator,
   ObjectStore,
+  PdfArchiveRecord,
+  PdfArchiveRepository,
+  PdfQuotaSettingsRepository,
+  PhotoRecord,
+  PhotoRepository,
+  SavedPhoto,
   UsageRepository,
 } from "@nomcci/cvmaker-application";
-import type { ApplicationInput, CvData, Language, Principal, SavedCvInput } from "@nomcci/cvmaker-domain";
+import { DEFAULT_PDF_QUOTA_SETTINGS, type ApplicationInput, type CvData, type Language, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
 
 export class NodeClock implements Clock {
   now(): Date {
@@ -127,54 +138,219 @@ export class InMemoryCvRepository implements CvRepository {
 }
 
 export class InMemoryCvInputRepository implements CvInputRepository {
-  private readonly records = new Map<string, Array<{ name: string; content: string }>>();
+  private readonly records = new Map<string, CvInputRecord>();
 
-  async list(userId: string): Promise<Array<{ name: string; content: string }>> {
-    return structuredClone(this.records.get(userId) ?? []);
+  constructor(private readonly clock: Clock) {}
+
+  async list(userId: string): Promise<CvInputRecord[]> {
+    return this.byUser(userId).map((record) => structuredClone(record));
   }
 
-  async save(userId: string, name: string, content: string): Promise<{ name: string; content: string }> {
-    const record = { name, content };
-    this.records.set(userId, [...(this.records.get(userId) ?? []), record]);
+  async save(userId: string, input: CvInputInput): Promise<CvInputRecord> {
+    const key = `${userId}:${input.id}`;
+    const previous = this.records.get(key);
+    const now = this.clock.now().toISOString();
+    const record: CvInputRecord = {
+      ...structuredClone(input),
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.records.set(key, record);
     return structuredClone(record);
+  }
+
+  private byUser(userId: string): CvInputRecord[] {
+    return [...this.records]
+      .filter(([key]) => key.startsWith(`${userId}:`))
+      .map(([, record]) => record)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 }
 
 export class InMemoryApplicationRepository implements ApplicationRepository {
-  private readonly records = new Map<string, ApplicationInput[]>();
+  private readonly records = new Map<string, ApplicationRecord>();
 
-  async list(userId: string): Promise<ApplicationInput[]> {
-    return structuredClone(this.records.get(userId) ?? []);
+  constructor(private readonly ids: IdGenerator, private readonly clock: Clock) {}
+
+  async list(userId: string): Promise<ApplicationRecord[]> {
+    return this.byUser(userId).map((record) => structuredClone(record));
   }
 
-  async save(userId: string, input: ApplicationInput): Promise<ApplicationInput> {
-    const record = structuredClone(input);
-    this.records.set(userId, [...(this.records.get(userId) ?? []), record]);
+  async save(userId: string, input: ApplicationInput): Promise<ApplicationRecord> {
+    const id = this.ids.generate();
+    const now = this.clock.now().toISOString();
+    const record: ApplicationRecord = { ...structuredClone(input), id, createdAt: now, updatedAt: now };
+    this.records.set(`${userId}:${id}`, record);
     return structuredClone(record);
+  }
+
+  private byUser(userId: string): ApplicationRecord[] {
+    return [...this.records]
+      .filter(([key]) => key.startsWith(`${userId}:`))
+      .map(([, record]) => record)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 }
 
 export class InMemoryUsageRepository implements UsageRepository {
   private readonly aiUses = new Map<string, number>();
-  private readonly importUses = new Set<string>();
+  private readonly pdfUses = new Map<string, number>();
+  private readonly importWorkflows = new Map<string, {
+    userId: string;
+    cvHash: string;
+    remainingAiUses: number;
+    expiresAt: string;
+  }>();
 
   async getAiUsage(userId: string, date: string): Promise<number> {
     return this.aiUses.get(`${userId}:${date}`) ?? 0;
   }
 
   async tryConsumeAiUse(userId: string, date: string, limit: number | null): Promise<boolean> {
-    const key = `${userId}:${date}`;
-    const current = this.aiUses.get(key) ?? 0;
-    if (limit !== null && current >= limit) return false;
-    this.aiUses.set(key, current + 1);
+    return this.tryConsume(this.aiUses, userId, date, limit);
+  }
+
+  async getPdfUsage(userId: string, date: string): Promise<number> {
+    return this.pdfUses.get(`${userId}:${date}`) ?? 0;
+  }
+
+  async tryConsumePdfUse(userId: string, date: string, limit: number | null): Promise<boolean> {
+    return this.tryConsume(this.pdfUses, userId, date, limit);
+  }
+
+  async createImportWorkflow(userId: string, workflowId: string, cvHash: string, expiresAt: Date): Promise<void> {
+    this.importWorkflows.set(workflowId, {
+      userId,
+      cvHash,
+      remainingAiUses: 1,
+      expiresAt: expiresAt.toISOString(),
+    });
+  }
+
+  async tryConsumeImportUse(workflowId: string, userId: string, cvHash: string, now: Date): Promise<boolean> {
+    const workflow = this.importWorkflows.get(workflowId);
+    if (!workflow || workflow.userId !== userId || workflow.cvHash !== cvHash) return false;
+    if (workflow.remainingAiUses <= 0) return false;
+    if (new Date(workflow.expiresAt).getTime() <= now.getTime()) return false;
+    workflow.remainingAiUses -= 1;
     return true;
   }
 
-  async tryConsumeImportUse(workflowId: string, userId: string, cvHash: string, _now: Date): Promise<boolean> {
-    const key = `${workflowId}:${userId}:${cvHash}`;
-    if (this.importUses.has(key)) return false;
-    this.importUses.add(key);
+  private tryConsume(uses: Map<string, number>, userId: string, date: string, limit: number | null): boolean {
+    const key = `${userId}:${date}`;
+    const current = uses.get(key) ?? 0;
+    if (limit !== null && current >= limit) return false;
+    uses.set(key, current + 1);
     return true;
+  }
+}
+
+export class InMemoryPhotoRepository implements PhotoRepository {
+  private readonly records = new Map<string, PhotoRecord>();
+
+  constructor(private readonly ids: IdGenerator, private readonly clock: Clock) {}
+
+  async list(userId: string): Promise<PhotoRecord[]> {
+    return [...this.byUser(userId)].reverse().map((record) => structuredClone(record));
+  }
+
+  async save(userId: string, name: string, dataUrl: string, maxPhotos: number): Promise<SavedPhoto> {
+    const existing = this.byUser(userId);
+    let deletedOldest = false;
+    if (maxPhotos > 0 && existing.length >= maxPhotos) {
+      this.records.delete(`${userId}:${existing[0]!.id}`);
+      deletedOldest = true;
+    }
+
+    const photo: PhotoRecord = {
+      id: this.ids.generate(),
+      name,
+      dataUrl,
+      createdAt: this.clock.now().toISOString(),
+    };
+    this.records.set(`${userId}:${photo.id}`, photo);
+    return { photo: structuredClone(photo), deletedOldest };
+  }
+
+  async delete(userId: string, id: string): Promise<boolean> {
+    return this.records.delete(`${userId}:${id}`);
+  }
+
+  private byUser(userId: string): PhotoRecord[] {
+    return [...this.records]
+      .filter(([key]) => key.startsWith(`${userId}:`))
+      .map(([, record]) => record)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+}
+
+export class InMemoryPdfArchiveRepository implements PdfArchiveRepository {
+  private readonly records = new Map<string, PdfArchiveRecord>();
+
+  async create(userId: string, record: PdfArchiveRecord): Promise<void> {
+    this.records.set(`${userId}:${record.id}`, structuredClone(record));
+  }
+
+  async list(userId: string, limit: number): Promise<PdfArchiveRecord[]> {
+    return this.byUser(userId).slice(0, limit).map((record) => structuredClone(record));
+  }
+
+  async findByHash(userId: string, contentHash: string): Promise<PdfArchiveRecord | null> {
+    const record = this.byUser(userId).find((candidate) => candidate.contentHash === contentHash);
+    return record ? structuredClone(record) : null;
+  }
+
+  async findByFilename(userId: string, filename: string): Promise<PdfArchiveRecord | null> {
+    const record = this.byUser(userId).find((candidate) => candidate.filename === filename);
+    return record ? structuredClone(record) : null;
+  }
+
+  async find(userId: string, id: string): Promise<PdfArchiveRecord | null> {
+    const record = this.records.get(`${userId}:${id}`);
+    return record ? structuredClone(record) : null;
+  }
+
+  async delete(userId: string, id: string): Promise<boolean> {
+    return this.records.delete(`${userId}:${id}`);
+  }
+
+  private byUser(userId: string): PdfArchiveRecord[] {
+    return [...this.records]
+      .filter(([key]) => key.startsWith(`${userId}:`))
+      .map(([, record]) => record)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+}
+
+export class InMemoryPdfQuotaSettingsRepository implements PdfQuotaSettingsRepository {
+  private settings: PdfQuotaSettings;
+
+  constructor(initial: PdfQuotaSettings = DEFAULT_PDF_QUOTA_SETTINGS) {
+    this.settings = structuredClone(initial);
+  }
+
+  async get(): Promise<PdfQuotaSettings> {
+    return structuredClone(this.settings);
+  }
+
+  async update(settings: PdfQuotaSettings): Promise<void> {
+    this.settings = structuredClone(settings);
+  }
+}
+
+const EMPTY_ADMIN_METRICS: AdminMetrics = {
+  totals: { applications: 0, users: 0, companies: 0 },
+  savedCvs: 0,
+  aiUses: 0,
+  topCompanies: [],
+  recentApplications: [],
+};
+
+export class InMemoryAdminMetricsRepository implements AdminMetricsRepository {
+  constructor(private readonly metrics: AdminMetrics = EMPTY_ADMIN_METRICS) {}
+
+  async getMetrics(): Promise<AdminMetrics> {
+    return structuredClone(this.metrics);
   }
 }
 

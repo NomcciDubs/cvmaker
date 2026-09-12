@@ -2,6 +2,7 @@ import type {
   ApplicationInput,
   CvData,
   Language,
+  PdfQuotaSettings,
   Principal,
   RenderOptions,
   SavedCvInput,
@@ -29,20 +30,93 @@ export interface CvRepository {
   delete(userId: string, id: string): Promise<boolean>;
 }
 
+export interface CvInputInput {
+  id: string;
+  name: string;
+  content: string;
+}
+
+export interface CvInputRecord extends CvInputInput {
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CvInputRepository {
-  list(userId: string): Promise<unknown[]>;
-  save(userId: string, name: string, content: string): Promise<unknown>;
+  list(userId: string): Promise<CvInputRecord[]>;
+  save(userId: string, input: CvInputInput): Promise<CvInputRecord>;
+}
+
+export interface ApplicationRecord extends ApplicationInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ApplicationRepository {
-  list(userId: string): Promise<unknown[]>;
-  save(userId: string, input: ApplicationInput): Promise<unknown>;
+  list(userId: string): Promise<ApplicationRecord[]>;
+  save(userId: string, input: ApplicationInput): Promise<ApplicationRecord>;
 }
 
 export interface UsageRepository {
   getAiUsage(userId: string, date: string): Promise<number>;
   tryConsumeAiUse(userId: string, date: string, limit: number | null): Promise<boolean>;
+  createImportWorkflow(userId: string, workflowId: string, cvHash: string, expiresAt: Date): Promise<void>;
   tryConsumeImportUse(workflowId: string, userId: string, cvHash: string, now: Date): Promise<boolean>;
+  getPdfUsage(userId: string, date: string): Promise<number>;
+  tryConsumePdfUse(userId: string, date: string, limit: number | null): Promise<boolean>;
+}
+
+export interface PhotoRecord {
+  id: string;
+  name: string;
+  dataUrl: string;
+  createdAt: string;
+}
+
+export interface SavedPhoto {
+  photo: PhotoRecord;
+  deletedOldest: boolean;
+}
+
+export interface PhotoRepository {
+  list(userId: string): Promise<PhotoRecord[]>;
+  save(userId: string, name: string, dataUrl: string, maxPhotos: number): Promise<SavedPhoto>;
+  delete(userId: string, id: string): Promise<boolean>;
+}
+
+export interface PdfArchiveRecord {
+  id: string;
+  filename: string;
+  objectKey: string;
+  sizeBytes: number;
+  contentHash: string | null;
+  createdAt: string;
+}
+
+export interface PdfArchiveRepository {
+  create(userId: string, record: PdfArchiveRecord): Promise<void>;
+  list(userId: string, limit: number): Promise<PdfArchiveRecord[]>;
+  findByHash(userId: string, contentHash: string): Promise<PdfArchiveRecord | null>;
+  findByFilename(userId: string, filename: string): Promise<PdfArchiveRecord | null>;
+  find(userId: string, id: string): Promise<PdfArchiveRecord | null>;
+  delete(userId: string, id: string): Promise<boolean>;
+}
+
+export interface PdfQuotaSettingsRepository {
+  get(): Promise<PdfQuotaSettings>;
+  update(settings: PdfQuotaSettings): Promise<void>;
+}
+
+export interface AdminMetrics {
+  totals: { applications: number; users: number; companies: number };
+  savedCvs: number;
+  aiUses: number;
+  topCompanies: Array<{ company: string; count: number }>;
+  recentApplications: Array<{ company: string; role: string; status: string; createdAt: string }>;
+}
+
+export interface AdminMetricsRepository {
+  getMetrics(): Promise<AdminMetrics>;
 }
 
 export interface CvAiService {
@@ -89,6 +163,10 @@ export interface ApplicationServices {
   cvInputs: CvInputRepository;
   applications: ApplicationRepository;
   usage: UsageRepository;
+  photos: PhotoRepository;
+  pdfArchives: PdfArchiveRepository;
+  pdfQuotas: PdfQuotaSettingsRepository;
+  adminMetrics: AdminMetricsRepository;
   ai: CvAiService;
   renderer: CvRenderer;
   pdf: PdfGenerator;
