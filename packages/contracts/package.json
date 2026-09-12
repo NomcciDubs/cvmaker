@@ -9,6 +9,7 @@
     "zod": "^4.6.2"
   },
   "scripts": {
+    "test": "vitest run src",
     "typecheck": "tsc --noEmit"
   }
 }

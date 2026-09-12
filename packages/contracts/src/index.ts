@@ -4,6 +4,7 @@ import { CV_SOURCE_TYPES, CV_STYLES, CV_TEMPLATES, LANGUAGES } from "@nomcci/cvm
 
 const optionalText = z.string().trim().max(10_000).optional();
 const shortOptionalText = z.string().trim().max(500).optional();
+const optionalLegacyName = (fallback: string) => z.string().trim().max(120).optional().transform((value) => value || fallback);
 
 export const languageSchema = z.enum(LANGUAGES);
 export const cvStyleSchema = z.enum(CV_STYLES);
@@ -85,6 +86,48 @@ export const translateCvRequestSchema = z.object({
   language: languageSchema,
 });
 
+export const importImproveRequestSchema = z.object({
+  cv: cvSchema,
+  originalCv: cvSchema,
+  importWorkflowId: z.uuid(),
+  targetRole: z.string().trim().max(500).optional(),
+  instruction: z.string().trim().max(10_000).optional(),
+  jobDescription: z.string().trim().max(100_000).optional(),
+  language: languageSchema,
+}).refine((value) => Boolean(value.targetRole || value.instruction), {
+  message: "Target role or instruction is required",
+  path: ["targetRole"],
+});
+
+export const pdfRequestSchema = renderCvRequestSchema.extend({
+  name: z.string().trim().max(200).optional(),
+});
+
+export const pdfArchiveFilenameSchema = z.string().regex(/^[0-9a-f-]{36}-[a-z0-9-]+\.pdf$/);
+
+export const cvInputRequestSchema = z.object({
+  id: z.uuid().optional(),
+  name: optionalLegacyName("Imported CV"),
+  content: z.string().trim().min(1).max(200_000),
+});
+
+export const photoRequestSchema = z.object({
+  name: optionalLegacyName("CV photo"),
+  dataUrl: z.string()
+    .max(900_000)
+    .regex(/^data:image\/(png|jpe?g|webp);base64,[a-z0-9+/=]+$/i),
+});
+
+const dailyQuotaSchema = z.number().int().positive().max(100);
+
+export const pdfQuotaSettingsSchema = z.object({
+  defaultDaily: dailyQuotaSchema,
+  friendDaily: dailyQuotaSchema,
+  superAdminDaily: dailyQuotaSchema.nullable(),
+  maxArchivedPdfs: z.number().int().positive().max(100),
+  maxArchivedPdfBytes: z.number().int().positive().max(250 * 1024 * 1024),
+});
+
 export const savedCvInputSchema = renderCvRequestSchema.extend({
   id: z.uuid().optional(),
   name: z.string().trim().min(1).max(200),
@@ -106,3 +149,8 @@ export const applicationInputSchema = renderCvRequestSchema.extend({
 export type RenderCvRequest = z.infer<typeof renderCvRequestSchema>;
 export type SavedCvRequest = z.infer<typeof savedCvInputSchema>;
 export type ApplicationRequest = z.infer<typeof applicationInputSchema>;
+export type ImportImproveRequest = z.infer<typeof importImproveRequestSchema>;
+export type PdfRequest = z.infer<typeof pdfRequestSchema>;
+export type CvInputRequest = z.infer<typeof cvInputRequestSchema>;
+export type PhotoRequest = z.infer<typeof photoRequestSchema>;
+export type PdfQuotaSettingsRequest = z.infer<typeof pdfQuotaSettingsSchema>;
