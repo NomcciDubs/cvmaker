@@ -1,0 +1,121 @@
+name: cvmaker
+
+x-api-healthcheck: &api-healthcheck
+  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 20s
+
+x-web-healthcheck: &web-healthcheck
+  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 20s
+
+services:
+  sqlite-init:
+    profiles: ["sqlite"]
+    build:
+      context: .
+      dockerfile: Dockerfile.sqlite
+    volumes:
+      - sqlite_data:/data
+    restart: "no"
+
+  api-sqlite:
+    profiles: ["sqlite"]
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3001
+      DATABASE_DIALECT: sqlite
+      DATABASE_URL: sqlite:/app/data/app.sqlite
+    ports:
+      - "${API_PORT:-3001}:3001"
+    volumes:
+      - sqlite_data:/app/data
+    depends_on:
+      sqlite-init:
+        condition: service_completed_successfully
+    healthcheck: *api-healthcheck
+    restart: unless-stopped
+
+  web-sqlite:
+    profiles: ["sqlite"]
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      VITE_API_PROXY_TARGET: http://api-sqlite:3001
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api-sqlite:
+        condition: service_healthy
+    healthcheck: *web-healthcheck
+    restart: unless-stopped
+
+  mysql:
+    profiles: ["mysql"]
+    image: mysql:8.4
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-cvmaker}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/mysql/0001_initial.sql:/docker-entrypoint-initdb.d/0001_initial.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+  api-mysql:
+    profiles: ["mysql"]
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3001
+      DATABASE_DIALECT: mysql
+      DATABASE_URL: mysql://root@mysql:3306/${MYSQL_DATABASE:-cvmaker}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck: *api-healthcheck
+    restart: unless-stopped
+
+  web-mysql:
+    profiles: ["mysql"]
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      VITE_API_PROXY_TARGET: http://api-mysql:3001
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api-mysql:
+        condition: service_healthy
+    healthcheck: *web-healthcheck
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
+  mysql_data:

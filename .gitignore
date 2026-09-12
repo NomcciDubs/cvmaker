@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!*.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build and test output
+dist/
+**/dist/
+coverage/
+**/coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+
+# Local data
+.local-data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Logs and editor files
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local plans and migration reference; never publish these directories.
+Plans/
+**/Plans/
+page/
+worker/

@@ -1,0 +1,13 @@
+{
+  "name": "@nomcci/cvmaker-rendering",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@nomcci/cvmaker-domain": "0.1.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

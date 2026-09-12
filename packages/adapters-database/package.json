@@ -1,0 +1,21 @@
+{
+  "name": "@nomcci/cvmaker-adapters-database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@nomcci/cvmaker-application": "0.1.0",
+    "@nomcci/cvmaker-domain": "0.1.0",
+    "better-sqlite3": "^13.0.3",
+    "mysql2": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.0.0"
+  },
+  "scripts": {
+    "test": "vitest run src",
+    "typecheck": "tsc --noEmit"
+  }
+}
