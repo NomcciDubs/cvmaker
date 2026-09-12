@@ -34,6 +34,12 @@ services:
       PORT: 3001
       DATABASE_DIALECT: sqlite
       DATABASE_URL: sqlite:/app/data/app.sqlite
+      AI_PROVIDER: ${AI_PROVIDER:-fake}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
+      AI_JSON_MODE: ${AI_JSON_MODE:-false}
     ports:
       - "${API_PORT:-3001}:3001"
     volumes:
@@ -81,6 +87,33 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  ollama-model:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/ollama"]
+    command: ["pull", "${AI_MODEL:-qwen2.5:7b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
   api-mysql:
     profiles: ["mysql"]
     build:
@@ -91,6 +124,12 @@ services:
       PORT: 3001
       DATABASE_DIALECT: mysql
       DATABASE_URL: mysql://root@mysql:3306/${MYSQL_DATABASE:-cvmaker}
+      AI_PROVIDER: ${AI_PROVIDER:-fake}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
+      AI_JSON_MODE: ${AI_JSON_MODE:-false}
     ports:
       - "${API_PORT:-3001}:3001"
     depends_on:
@@ -119,3 +158,4 @@ services:
 volumes:
   sqlite_data:
   mysql_data:
+  ollama_data:

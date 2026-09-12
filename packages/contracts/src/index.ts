@@ -61,6 +61,30 @@ export const renderOptionsSchema = z.object({
 
 export const renderCvRequestSchema = renderOptionsSchema.extend({ cv: cvSchema });
 
+export const importCvRequestSchema = z.object({
+  description: z.string().trim().min(1).max(200_000),
+  language: languageSchema,
+});
+
+export const rewriteCvRequestSchema = z.object({
+  cv: cvSchema,
+  targetRole: z.string().trim().min(1).max(500),
+  jobDescription: z.string().trim().max(100_000).optional(),
+  language: languageSchema,
+});
+
+export const modifyCvRequestSchema = z.object({
+  cv: cvSchema,
+  instruction: z.string().trim().min(1).max(10_000),
+  jobDescription: z.string().trim().max(100_000).optional(),
+  language: languageSchema,
+});
+
+export const translateCvRequestSchema = z.object({
+  cv: cvSchema,
+  language: languageSchema,
+});
+
 export const savedCvInputSchema = renderCvRequestSchema.extend({
   id: z.uuid().optional(),
   name: z.string().trim().min(1).max(200),

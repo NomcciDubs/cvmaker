@@ -12,8 +12,10 @@ import {
   NodeIdGenerator,
   NodeSha256Hasher,
 } from "@nomcci/cvmaker-adapters-node";
+import { OpenAiCompatibleChatModel } from "@nomcci/cvmaker-adapters-ai";
 import { createCvRepository, type ClosableCvRepository } from "@nomcci/cvmaker-adapters-database";
-import type { ApplicationServices, PdfGenerator } from "@nomcci/cvmaker-application";
+import { PortableCvAiService } from "@nomcci/cvmaker-ai";
+import type { ApplicationServices, CvAiService, PdfGenerator } from "@nomcci/cvmaker-application";
 import { renderCvHtml } from "@nomcci/cvmaker-rendering";
 
 import { createApi } from "./app";
@@ -32,7 +34,7 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
     cvInputs: new InMemoryCvInputRepository(),
     applications: new InMemoryApplicationRepository(),
     usage: new InMemoryUsageRepository(),
-    ai: new DeterministicFakeCvAi(),
+    ai: createCvAiService(process.env),
     renderer: { render: renderCvHtml },
     pdf: new UnsupportedDevelopmentPdfGenerator(),
     objects: new FileSystemObjectStore(options.objectRoot ?? resolve(".local-data", "objects")),
@@ -45,12 +47,51 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
     auth: services.auth,
     cvs: services.cvs,
     renderer: services.renderer,
+    ai: services.ai,
     usage: services.usage,
     clock: services.clock,
     developmentLogin: { enabled: options.enableLogin ?? true, sessionToken: DEVELOPMENT_SESSION },
   });
 
   return { app, services, close: () => closeRepository(persistentCvs) };
+}
+
+export function createCvAiService(environment: NodeJS.ProcessEnv, fetchImplementation?: typeof fetch): CvAiService {
+  const provider = environment.AI_PROVIDER?.trim() || "fake";
+  if (provider === "fake") return new DeterministicFakeCvAi();
+  if (provider !== "openai-compatible" && provider !== "ollama") {
+    throw new Error(`Unsupported AI_PROVIDER: ${provider}`);
+  }
+
+  const baseUrl = environment.AI_BASE_URL?.trim() || (provider === "ollama" ? "http://localhost:11434/v1" : "");
+  if (!baseUrl) throw new Error("AI_BASE_URL is required for AI_PROVIDER=openai-compatible");
+  const model = environment.AI_MODEL?.trim();
+  if (!model) throw new Error(`AI_MODEL is required for AI_PROVIDER=${provider}`);
+
+  const timeoutMs = parseTimeout(environment.AI_TIMEOUT_MS);
+  const supportsJsonMode = parseBoolean(environment.AI_JSON_MODE, "AI_JSON_MODE");
+  return new PortableCvAiService(new OpenAiCompatibleChatModel({
+    baseUrl,
+    model,
+    ...(environment.AI_API_KEY ? { apiKey: environment.AI_API_KEY } : {}),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    ...(supportsJsonMode === undefined ? {} : { supportsJsonMode }),
+    ...(fetchImplementation ? { fetch: fetchImplementation } : {}),
+  }));
+}
+
+function parseTimeout(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const timeout = Number(value);
+  if (!Number.isFinite(timeout) || timeout <= 0) throw new Error("AI_TIMEOUT_MS must be a positive number");
+  return timeout;
+}
+
+function parseBoolean(value: string | undefined, name: string): boolean | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${name} must be true or false`);
 }
 
 async function closeRepository(repository: ClosableCvRepository | null): Promise<void> {

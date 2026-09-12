@@ -1,5 +1,12 @@
-import type { AuthGateway, Clock, CvRenderer, CvRepository, UsageRepository } from "@nomcci/cvmaker-application";
-import { renderCvRequestSchema, savedCvInputSchema } from "@nomcci/cvmaker-contracts";
+import type { AuthGateway, Clock, CvAiService, CvRenderer, CvRepository, UsageRepository } from "@nomcci/cvmaker-application";
+import {
+  importCvRequestSchema,
+  modifyCvRequestSchema,
+  renderCvRequestSchema,
+  rewriteCvRequestSchema,
+  savedCvInputSchema,
+  translateCvRequestSchema,
+} from "@nomcci/cvmaker-contracts";
 import { aiDailyLimitFor, type CvData, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -9,6 +16,7 @@ export interface ApiDependencies {
   auth: AuthGateway;
   cvs: CvRepository;
   renderer: CvRenderer;
+  ai: CvAiService;
   usage: UsageRepository;
   clock: Clock;
   developmentLogin?: {
@@ -85,6 +93,48 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     return context.json({ html: dependencies.renderer.render(toDomainValue<CvData>(parsed.data.cv), parsed.data) });
   });
 
+  app.post("/api/cv/import", async (context) => {
+    const parsed = importCvRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+    const cv = await dependencies.ai.import(parsed.data.description, parsed.data.language);
+    return context.json({ cv });
+  });
+
+  app.post("/api/cv/rewrite", async (context) => {
+    const parsed = rewriteCvRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+    const cv = await dependencies.ai.rewrite(
+      toDomainValue<CvData>(parsed.data.cv),
+      parsed.data.targetRole,
+      parsed.data.jobDescription,
+      parsed.data.language,
+    );
+    return context.json({ cv });
+  });
+
+  app.post("/api/cv/modify", async (context) => {
+    const parsed = modifyCvRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+    const cv = await dependencies.ai.modify(
+      toDomainValue<CvData>(parsed.data.cv),
+      parsed.data.instruction,
+      parsed.data.jobDescription,
+      parsed.data.language,
+    );
+    return context.json({ cv });
+  });
+
+  app.post("/api/cv/translate", async (context) => {
+    const parsed = translateCvRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+    const cv = await dependencies.ai.translate(toDomainValue<CvData>(parsed.data.cv), parsed.data.language);
+    return context.json({ cv });
+  });
+
   app.get("/api/cvs", async (context) => {
     const records = await dependencies.cvs.list(context.get("principal").id);
     return context.json({ cvs: records });
@@ -124,4 +174,9 @@ function validationError(error: z.ZodError): { error: "validation_error"; issues
 
 function toDomainValue<T>(value: unknown): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+async function consumeAiUse(principal: Principal, dependencies: ApiDependencies): Promise<boolean> {
+  const date = dependencies.clock.now().toISOString().slice(0, 10);
+  return dependencies.usage.tryConsumeAiUse(principal.id, date, aiDailyLimitFor(principal.role));
 }

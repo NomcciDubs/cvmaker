@@ -6,9 +6,11 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@hono/node-server": "^1.19.0",
+    "@nomcci/cvmaker-adapters-ai": "0.1.0",
     "@nomcci/cvmaker-adapters-node": "0.1.0",
     "@nomcci/cvmaker-adapters-database": "0.1.0",
     "@nomcci/cvmaker-application": "0.1.0",
+    "@nomcci/cvmaker-ai": "0.1.0",
     "@nomcci/cvmaker-contracts": "0.1.0",
     "@nomcci/cvmaker-domain": "0.1.0",
     "@nomcci/cvmaker-rendering": "0.1.0",

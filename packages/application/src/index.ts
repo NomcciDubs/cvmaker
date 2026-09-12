@@ -52,6 +52,23 @@ export interface CvAiService {
   translate(cv: CvData, language: Language): Promise<CvData>;
 }
 
+export type ChatMessageRole = "system" | "user" | "assistant";
+
+export interface ChatMessage {
+  role: ChatMessageRole;
+  content: string;
+}
+
+export interface ChatModelRequest {
+  messages: readonly ChatMessage[];
+  temperature?: number;
+  responseFormat?: "json";
+}
+
+export interface ChatModel {
+  complete(request: ChatModelRequest): Promise<string>;
+}
+
 export interface CvRenderer {
   render(cv: CvData, options: RenderOptions): string;
 }

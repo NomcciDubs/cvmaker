@@ -11,7 +11,9 @@
     "build": "npm run build --workspaces --if-present",
     "dev:sqlite": "docker compose --env-file compose.sqlite.env.example --profile sqlite up --build",
     "dev:mysql": "docker compose --env-file compose.mysql.env.example --profile mysql up --build",
-    "dev:down": "docker compose --profile sqlite --profile mysql down",
+    "dev:sqlite:ollama": "docker compose --env-file compose.ollama.env.example --profile sqlite --profile ollama up --build",
+    "dev:mysql:ollama": "docker compose --env-file compose.ollama.env.example --profile mysql --profile ollama up --build",
+    "dev:down": "docker compose --profile sqlite --profile mysql --profile ollama down",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces --if-present"

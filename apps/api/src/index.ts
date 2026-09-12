@@ -1,2 +1,2 @@
 export { createApi, type ApiDependencies } from "./app";
-export { createDevelopmentComposition } from "./composition";
+export { createCvAiService, createDevelopmentComposition } from "./composition";
