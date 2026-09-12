@@ -66,6 +66,8 @@ Available providers:
 
 - `fake`: deterministic and credential-free; default for development and tests.
 - `ollama`: local models through Ollama's OpenAI-compatible API.
+- `openai`: OpenAI API with `AI_API_KEY`; JSON mode on by default; `AI_BASE_URL` overrides the endpoint.
+- `openrouter`: OpenRouter with `AI_API_KEY`; optional `AI_APP_URL` and `AI_APP_NAME` attribution headers; `AI_BASE_URL` overrides the endpoint.
 - `openai-compatible`: any remote or self-hosted `/v1/chat/completions` endpoint.
 
 Run SQLite or MySQL with the default local Ollama model:
@@ -100,10 +102,12 @@ HOST=127.0.0.1
 PORT=3001
 DATABASE_DIALECT=sqlite|mysql
 DATABASE_URL=<database connection>
-AI_PROVIDER=fake|ollama|openai-compatible
-AI_BASE_URL=<endpoint ending in /v1>
+AI_PROVIDER=fake|ollama|openai|openrouter|openai-compatible
+AI_BASE_URL=<endpoint ending in /v1; optional when the provider has a default>
 AI_MODEL=<model identifier>
-AI_API_KEY=<optional secret>
+AI_API_KEY=<required for openai and openrouter, optional otherwise>
+AI_APP_URL=<optional OpenRouter attribution site URL>
+AI_APP_NAME=<optional OpenRouter attribution site title>
 AI_TIMEOUT_MS=30000
 AI_JSON_MODE=false
 ```

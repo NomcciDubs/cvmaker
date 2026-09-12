@@ -38,6 +38,8 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_API_KEY: ${AI_API_KEY:-}
+      AI_APP_URL: ${AI_APP_URL:-}
+      AI_APP_NAME: ${AI_APP_NAME:-}
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
       AI_JSON_MODE: ${AI_JSON_MODE:-false}
     ports:
@@ -128,6 +130,8 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_API_KEY: ${AI_API_KEY:-}
+      AI_APP_URL: ${AI_APP_URL:-}
+      AI_APP_NAME: ${AI_APP_NAME:-}
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
       AI_JSON_MODE: ${AI_JSON_MODE:-false}
     ports:
