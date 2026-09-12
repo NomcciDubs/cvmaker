@@ -64,6 +64,7 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
     usage: services.usage,
     clock: services.clock,
     ids: services.ids,
+    hasher: services.hasher,
     developmentLogin: { enabled: options.enableLogin ?? true, sessionToken: DEVELOPMENT_SESSION },
   });
 

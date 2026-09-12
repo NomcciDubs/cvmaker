@@ -80,8 +80,9 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
   };
   const clock = { now: () => new Date("2026-09-11T12:00:00.000Z") };
   const ids = { generate: vi.fn(() => "00000000-0000-4000-8000-000000000002") };
+  const hasher = { hash: vi.fn(async () => "cv-hash") };
   return {
-    app: createApi({ auth, cvs, cvInputs, applications, photos, pdfQuotas, adminMetrics, renderer, usage, clock, ids, ai }),
+    app: createApi({ auth, cvs, cvInputs, applications, photos, pdfQuotas, adminMetrics, renderer, usage, clock, ids, hasher, ai }),
     auth,
     cvs,
     cvInputs,
@@ -92,6 +93,7 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
     renderer,
     usage,
     ids,
+    hasher,
     ai,
   };
 }
@@ -166,6 +168,79 @@ describe("API boundaries", () => {
 
     expect(response.status).toBe(429);
     expect(result.ai.import).not.toHaveBeenCalled();
+  });
+
+  it("creates a single-use import workflow bound to the generated CV hash", async () => {
+    const result = fixture();
+    const response = await result.app.request("/api/cv/import", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({ description: "Resume text", language: "en" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      cv: validRenderRequest.cv,
+      importWorkflowId: "00000000-0000-4000-8000-000000000002",
+    });
+    expect(result.hasher.hash).toHaveBeenCalledWith(JSON.stringify(validRenderRequest.cv));
+    expect(result.usage.createImportWorkflow).toHaveBeenCalledWith(
+      principal.id,
+      "00000000-0000-4000-8000-000000000002",
+      "cv-hash",
+      new Date("2026-09-12T12:00:00.000Z"),
+    );
+  });
+
+  it("uses the import allowance without daily quota and preserves the photo", async () => {
+    const result = fixture();
+    result.usage.tryConsumeImportUse.mockResolvedValueOnce(true);
+    result.ai.rewrite.mockResolvedValueOnce({ personal_info: { full_name: "Ada Lovelace" } });
+    const source = { personal_info: { full_name: "Ada Lovelace", photo_url: "data:image/png;base64,YQ==" } };
+    const response = await result.app.request("/api/cv/import-improve", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({
+        cv: source,
+        originalCv: validRenderRequest.cv,
+        importWorkflowId: "00000000-0000-4000-8000-000000000008",
+        targetRole: "Engineer",
+        language: "en",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      cv: { personal_info: { full_name: "Ada Lovelace", photo_url: "data:image/png;base64,YQ==" } },
+      importWorkflowId: null,
+    });
+    expect(result.usage.tryConsumeImportUse).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000008",
+      principal.id,
+      "cv-hash",
+      new Date("2026-09-11T12:00:00.000Z"),
+    );
+    expect(result.usage.tryConsumeAiUse).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke AI when the import allowance is unavailable", async () => {
+    const result = fixture();
+    result.usage.tryConsumeImportUse.mockResolvedValueOnce(false);
+    const response = await result.app.request("/api/cv/import-improve", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({
+        cv: validRenderRequest.cv,
+        originalCv: validRenderRequest.cv,
+        importWorkflowId: "00000000-0000-4000-8000-000000000008",
+        instruction: "Improve the summary",
+        language: "en",
+      }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "import_ai_allowance_unavailable" });
+    expect(result.ai.modify).not.toHaveBeenCalled();
   });
 
   it("passes only the authenticated owner ID to CV persistence", async () => {

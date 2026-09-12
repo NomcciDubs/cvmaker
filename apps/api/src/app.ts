@@ -3,6 +3,7 @@ import type {
   ApplicationRepository,
   AuthGateway,
   Clock,
+  ContentHasher,
   CvAiService,
   CvInputRepository,
   CvRenderer,
@@ -16,6 +17,7 @@ import {
   applicationInputSchema,
   cvInputRequestSchema,
   importCvRequestSchema,
+  importImproveRequestSchema,
   modifyCvRequestSchema,
   pdfQuotaSettingsSchema,
   photoRequestSchema,
@@ -42,6 +44,7 @@ export interface ApiDependencies {
   usage: UsageRepository;
   clock: Clock;
   ids: IdGenerator;
+  hasher: ContentHasher;
   developmentLogin?: {
     enabled: boolean;
     sessionToken: string;
@@ -196,41 +199,74 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
     if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
     const cv = await dependencies.ai.import(parsed.data.description, parsed.data.language);
-    return context.json({ cv });
+    const principal = context.get("principal");
+    const workflowId = dependencies.ids.generate();
+    const expiresAt = new Date(dependencies.clock.now().getTime() + 24 * 60 * 60 * 1_000);
+    await dependencies.usage.createImportWorkflow(
+      principal.id,
+      workflowId,
+      await dependencies.hasher.hash(JSON.stringify(cv)),
+      expiresAt,
+    );
+    return context.json({ cv, importWorkflowId: workflowId });
+  });
+
+  app.post("/api/cv/import-improve", async (context) => {
+    const parsed = importImproveRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    const principal = context.get("principal");
+    const originalHash = await dependencies.hasher.hash(JSON.stringify(parsed.data.originalCv));
+    if (!(await dependencies.usage.tryConsumeImportUse(
+      parsed.data.importWorkflowId,
+      principal.id,
+      originalHash,
+      dependencies.clock.now(),
+    ))) {
+      return context.json({ error: "import_ai_allowance_unavailable" }, 429);
+    }
+
+    const cv = toDomainValue<CvData>(parsed.data.cv);
+    const improved = parsed.data.targetRole
+      ? await dependencies.ai.rewrite(cv, parsed.data.targetRole, parsed.data.jobDescription, parsed.data.language)
+      : await dependencies.ai.modify(cv, parsed.data.instruction!, parsed.data.jobDescription, parsed.data.language);
+    return context.json({ cv: preservePhoto(cv, improved), importWorkflowId: null });
   });
 
   app.post("/api/cv/rewrite", async (context) => {
     const parsed = rewriteCvRequestSchema.safeParse(await readJson(context.req.raw));
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
     if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+    const source = toDomainValue<CvData>(parsed.data.cv);
     const cv = await dependencies.ai.rewrite(
-      toDomainValue<CvData>(parsed.data.cv),
+      source,
       parsed.data.targetRole,
       parsed.data.jobDescription,
       parsed.data.language,
     );
-    return context.json({ cv });
+    return context.json({ cv: preservePhoto(source, cv) });
   });
 
   app.post("/api/cv/modify", async (context) => {
     const parsed = modifyCvRequestSchema.safeParse(await readJson(context.req.raw));
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
     if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+    const source = toDomainValue<CvData>(parsed.data.cv);
     const cv = await dependencies.ai.modify(
-      toDomainValue<CvData>(parsed.data.cv),
+      source,
       parsed.data.instruction,
       parsed.data.jobDescription,
       parsed.data.language,
     );
-    return context.json({ cv });
+    return context.json({ cv: preservePhoto(source, cv) });
   });
 
   app.post("/api/cv/translate", async (context) => {
     const parsed = translateCvRequestSchema.safeParse(await readJson(context.req.raw));
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
     if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
-    const cv = await dependencies.ai.translate(toDomainValue<CvData>(parsed.data.cv), parsed.data.language);
-    return context.json({ cv });
+    const source = toDomainValue<CvData>(parsed.data.cv);
+    const cv = await dependencies.ai.translate(source, parsed.data.language);
+    return context.json({ cv: preservePhoto(source, cv) });
   });
 
   app.get("/api/cvs", async (context) => {
@@ -277,4 +313,13 @@ function toDomainValue<T>(value: unknown): T {
 async function consumeAiUse(principal: Principal, dependencies: ApiDependencies): Promise<boolean> {
   const date = dependencies.clock.now().toISOString().slice(0, 10);
   return dependencies.usage.tryConsumeAiUse(principal.id, date, aiDailyLimitFor(principal.role));
+}
+
+function preservePhoto(source: CvData, output: CvData): CvData {
+  const photoUrl = source.personal_info.photo_url;
+  if (!photoUrl || output.personal_info.photo_url) return output;
+  return {
+    ...output,
+    personal_info: { ...output.personal_info, photo_url: photoUrl },
+  };
 }
