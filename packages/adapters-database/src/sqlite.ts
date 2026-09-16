@@ -83,7 +83,7 @@ export class SqliteCvRepository implements ClosableCvRepository {
   }
 }
 
-function sqliteFilename(databaseUrl: string): string {
+export function sqliteFilename(databaseUrl: string): string {
   if (!databaseUrl.startsWith("sqlite:")) return databaseUrl;
   const filename = databaseUrl.slice("sqlite:".length);
   if (filename === ":memory:") return filename;

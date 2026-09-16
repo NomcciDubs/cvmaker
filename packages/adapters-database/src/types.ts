@@ -1,4 +1,13 @@
-import type { CvRepository } from "@nomcci/cvmaker-application";
+import type {
+  AdminMetricsRepository,
+  ApplicationRepository,
+  CvInputRepository,
+  CvRepository,
+  PdfArchiveRepository,
+  PdfQuotaSettingsRepository,
+  PhotoRepository,
+  UsageRepository,
+} from "@nomcci/cvmaker-application";
 import type { SavedCvInput } from "@nomcci/cvmaker-domain";
 
 export interface SavedCvRecord extends SavedCvInput {
@@ -11,6 +20,18 @@ export interface SavedCvRecord extends SavedCvInput {
 export interface ClosableCvRepository extends CvRepository {
   list(userId: string): Promise<SavedCvRecord[]>;
   save(userId: string, input: SavedCvInput): Promise<SavedCvRecord>;
+  close(): Promise<void>;
+}
+
+export interface ClosableDatabaseRepositories {
+  cvs: CvRepository;
+  cvInputs: CvInputRepository;
+  applications: ApplicationRepository;
+  usage: UsageRepository;
+  photos: PhotoRepository;
+  pdfArchives: PdfArchiveRepository;
+  pdfQuotas: PdfQuotaSettingsRepository;
+  adminMetrics: AdminMetricsRepository;
   close(): Promise<void>;
 }
 

@@ -7,10 +7,18 @@ import { pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createCvRepository, CvIdCollisionError, SqliteCvRepository, type ClosableCvRepository } from "./index";
+import {
+  createCvRepository,
+  CvIdCollisionError,
+  SqliteCvRepository,
+  SqliteRepositoryBundle,
+  type ClosableDatabaseRepositories,
+  type ClosableCvRepository,
+} from "./index";
+import { databaseRepositoryContract } from "./repository-contract";
 
 const temporaryDirectories: string[] = [];
-const repositories: ClosableCvRepository[] = [];
+const repositories: Array<ClosableCvRepository | ClosableDatabaseRepositories> = [];
 
 afterEach(async () => {
   await Promise.all(repositories.splice(0).map((repository) => repository.close()));
@@ -29,6 +37,25 @@ async function fixture(dependencies: ConstructorParameters<typeof SqliteCvReposi
   const repository = new SqliteCvRepository(filename, dependencies);
   repositories.push(repository);
   return { filename, repository };
+}
+
+async function bundleFixture(): Promise<SqliteRepositoryBundle> {
+  const directory = await mkdtemp(join(tmpdir(), "cvmaker-database-bundle-"));
+  temporaryDirectories.push(directory);
+  const filename = join(directory, "test.sqlite");
+  const migration = await readFile(new URL("../../../database/sqlite/0001_initial.sql", import.meta.url), "utf8");
+  const database = new Database(filename);
+  database.exec(migration);
+  database.close();
+
+  let id = 0;
+  let timestamp = Date.parse("2026-01-02T00:00:00.000Z");
+  const repositoriesBundle = new SqliteRepositoryBundle(filename, {
+    generateId: () => `generated-${++id}`,
+    now: () => new Date(timestamp += 1_000),
+  });
+  repositories.push(repositoriesBundle);
+  return repositoriesBundle;
 }
 
 const input = {
@@ -118,3 +145,5 @@ describe("createCvRepository", () => {
     );
   });
 });
+
+databaseRepositoryContract("SQLite portable repository contract", bundleFixture);

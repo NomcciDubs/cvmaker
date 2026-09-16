@@ -1,7 +1,9 @@
 export { MysqlCvRepository } from "./mysql";
 export { SqliteCvRepository } from "./sqlite";
+export { SqliteRepositoryBundle } from "./sqlite-repositories";
 export {
   CvIdCollisionError,
+  type ClosableDatabaseRepositories,
   type ClosableCvRepository,
   type DatabaseDialect,
   type DatabaseEnvironment,
