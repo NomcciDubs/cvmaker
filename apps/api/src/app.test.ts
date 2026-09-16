@@ -52,6 +52,14 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
     save: vi.fn(async () => ({ id: "00000000-0000-4000-8000-000000000003", deletedOldest: false })),
     delete: vi.fn(async () => false),
   };
+  const pdfArchives = {
+    tryCommitExport: vi.fn(async () => ({ status: "created" as const })),
+    list: vi.fn(async () => []),
+    findByHash: vi.fn(async () => null),
+    findByFilename: vi.fn(async () => null),
+    find: vi.fn(async () => null),
+    delete: vi.fn(async () => false),
+  };
   const pdfQuotas = {
     get: vi.fn(async () => ({ defaultDaily: 3, friendDaily: 20, superAdminDaily: null, maxArchivedPdfs: 20, maxArchivedPdfBytes: 26_214_400 })),
     update: vi.fn(async () => undefined),
@@ -81,16 +89,42 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
   const clock = { now: () => new Date("2026-09-11T12:00:00.000Z") };
   const ids = { generate: vi.fn(() => "00000000-0000-4000-8000-000000000002") };
   const hasher = { hash: vi.fn(async () => "cv-hash") };
+  const pdf = { generate: vi.fn(async () => new Uint8Array([1, 2, 3])) };
+  const objects = {
+    get: vi.fn(async () => null),
+    put: vi.fn(async () => undefined),
+    delete: vi.fn(async () => undefined),
+  };
   return {
-    app: createApi({ auth, cvs, cvInputs, applications, photos, pdfQuotas, adminMetrics, renderer, usage, clock, ids, hasher, ai }),
+    app: createApi({
+      auth,
+      cvs,
+      cvInputs,
+      applications,
+      photos,
+      pdfArchives,
+      pdfQuotas,
+      adminMetrics,
+      renderer,
+      pdf,
+      objects,
+      usage,
+      clock,
+      ids,
+      hasher,
+      ai,
+    }),
     auth,
     cvs,
     cvInputs,
     applications,
     photos,
+    pdfArchives,
     pdfQuotas,
     adminMetrics,
     renderer,
+    pdf,
+    objects,
     usage,
     ids,
     hasher,
@@ -338,6 +372,220 @@ describe("API boundaries", () => {
     expect(limitsResponse.status).toBe(200);
     expect(await limitsResponse.json()).toEqual({ limits });
     expect(result.pdfQuotas.update).toHaveBeenCalledWith(limits);
+  });
+
+  it("lists PDF archives without exposing internal object keys", async () => {
+    const result = fixture();
+    result.pdfArchives.list.mockResolvedValueOnce([{
+      id: "00000000-0000-4000-8000-000000000005",
+      filename: "00000000-0000-4000-8000-000000000006-ada.pdf",
+      objectKey: "archives/private/object.pdf",
+      sizeBytes: 1_024,
+      contentHash: "private-hash",
+      createdAt: "2026-09-11T12:00:00.000Z",
+    }]);
+
+    const response = await result.app.request("/api/archives", { headers: { authorization: "Bearer valid" } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ archives: [{
+      id: "00000000-0000-4000-8000-000000000005",
+      filename: "00000000-0000-4000-8000-000000000006-ada.pdf",
+      sizeBytes: 1_024,
+      createdAt: "2026-09-11T12:00:00.000Z",
+      downloadPath: `/archives/${principal.id}/output/00000000-0000-4000-8000-000000000006-ada.pdf`,
+    }] });
+    expect(result.pdfArchives.list).toHaveBeenCalledWith(principal.id, 20);
+  });
+
+  it("deletes the PDF object before its owned archive metadata", async () => {
+    const result = fixture();
+    const archiveId = "00000000-0000-4000-8000-000000000005";
+    result.pdfArchives.find.mockResolvedValueOnce({
+      id: archiveId,
+      filename: "00000000-0000-4000-8000-000000000006-ada.pdf",
+      objectKey: "archives/owner/output/ada.pdf",
+      sizeBytes: 3,
+      contentHash: "hash",
+      createdAt: "2026-09-11T12:00:00.000Z",
+    });
+
+    const response = await result.app.request(`/api/archives/${archiveId}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer valid" },
+    });
+    expect(response.status).toBe(200);
+    expect(result.objects.delete).toHaveBeenCalledWith("archives/owner/output/ada.pdf");
+    expect(result.pdfArchives.delete).toHaveBeenCalledWith(principal.id, archiveId);
+    expect(result.objects.delete.mock.invocationCallOrder[0]).toBeLessThan(result.pdfArchives.delete.mock.invocationCallOrder[0]!);
+  });
+
+  it("serves only the authenticated owner's validated PDF archive", async () => {
+    const result = fixture();
+    const filename = "00000000-0000-4000-8000-000000000006-ada.pdf";
+    result.pdfArchives.findByFilename.mockResolvedValueOnce({
+      id: "00000000-0000-4000-8000-000000000005",
+      filename,
+      objectKey: "archives/owner/output/ada.pdf",
+      sizeBytes: 3,
+      contentHash: "hash",
+      createdAt: "2026-09-11T12:00:00.000Z",
+    });
+    result.objects.get.mockResolvedValueOnce(new Uint8Array([1, 2, 3]));
+
+    const response = await result.app.request(`/archives/${principal.id}/output/${filename}`, {
+      headers: { authorization: "Bearer valid" },
+    });
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+
+    const wrongOwner = await result.app.request(`/archives/00000000-0000-4000-8000-000000000099/output/${filename}`, {
+      headers: { authorization: "Bearer valid" },
+    });
+    expect(wrongOwner.status).toBe(404);
+    expect(result.pdfArchives.findByFilename).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses an existing PDF archive before generation", async () => {
+    const result = fixture();
+    result.pdfArchives.findByHash.mockResolvedValueOnce({
+      id: "00000000-0000-4000-8000-000000000005",
+      filename: "00000000-0000-4000-8000-000000000006-ada.pdf",
+      objectKey: "archives/owner/output/ada.pdf",
+      sizeBytes: 3,
+      contentHash: "cv-hash",
+      createdAt: "2026-09-11T12:00:00.000Z",
+    });
+
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(validRenderRequest),
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).reused).toBe(true);
+    expect(result.pdf.generate).not.toHaveBeenCalled();
+    expect(result.objects.put).not.toHaveBeenCalled();
+  });
+
+  it("stores a generated PDF and atomically commits quotas and metadata", async () => {
+    const result = fixture();
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify({ ...validRenderRequest, name: "Ada CV" }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      downloadPath: `/archives/${principal.id}/output/00000000-0000-4000-8000-000000000002-ada-cv.pdf`,
+    });
+    expect(result.objects.put).toHaveBeenCalledWith(
+      `archives/${principal.id}/output/00000000-0000-4000-8000-000000000002-ada-cv.pdf`,
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(result.pdfArchives.tryCommitExport).toHaveBeenCalledWith(
+      principal.id,
+      "2026-09-11",
+      expect.objectContaining({
+        filename: "00000000-0000-4000-8000-000000000002-ada-cv.pdf",
+        sizeBytes: 3,
+        contentHash: "cv-hash",
+      }),
+      { daily: 3, maxArchivedPdfs: 20, maxArchivedPdfBytes: 26_214_400 },
+    );
+  });
+
+  it("returns 502 without storage when PDF generation fails", async () => {
+    const result = fixture();
+    result.pdf.generate.mockRejectedValueOnce(new Error("browser unavailable"));
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(validRenderRequest),
+    });
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "pdf_generation_failed" });
+    expect(result.objects.put).not.toHaveBeenCalled();
+    expect(result.pdfArchives.tryCommitExport).not.toHaveBeenCalled();
+  });
+
+  it("rejects a single PDF larger than the total archive byte limit", async () => {
+    const result = fixture();
+    result.pdfQuotas.get.mockResolvedValueOnce({
+      defaultDaily: 3,
+      friendDaily: 20,
+      superAdminDaily: null,
+      maxArchivedPdfs: 20,
+      maxArchivedPdfBytes: 2,
+    });
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(validRenderRequest),
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "pdf_too_large" });
+    expect(result.objects.put).not.toHaveBeenCalled();
+  });
+
+  it("removes the race-losing object and reuses the committed duplicate", async () => {
+    const result = fixture();
+    const duplicate = {
+      id: "00000000-0000-4000-8000-000000000005",
+      filename: "00000000-0000-4000-8000-000000000006-existing.pdf",
+      objectKey: "archives/owner/output/existing.pdf",
+      sizeBytes: 3,
+      contentHash: "cv-hash",
+      createdAt: "2026-09-11T12:00:00.000Z",
+    };
+    result.pdfArchives.tryCommitExport.mockResolvedValueOnce({ status: "duplicate", archive: duplicate });
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(validRenderRequest),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      downloadPath: `/archives/${principal.id}/output/${duplicate.filename}`,
+      reused: true,
+    });
+    expect(result.objects.delete).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["daily_limit_reached", "pdf_daily_limit_reached"],
+    ["archive_count_limit_reached", "pdf_archive_limit_reached"],
+    ["archive_size_limit_reached", "pdf_storage_limit_reached"],
+  ] as const)("removes the PDF object when commit returns %s", async (status, error) => {
+    const result = fixture();
+    result.pdfArchives.tryCommitExport.mockResolvedValueOnce({ status });
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(validRenderRequest),
+    });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error });
+    expect(result.objects.delete).toHaveBeenCalledOnce();
+  });
+
+  it("compensates the stored object when PDF metadata persistence fails", async () => {
+    const result = fixture();
+    result.pdfArchives.tryCommitExport.mockRejectedValueOnce(new Error("database unavailable"));
+    const response = await result.app.request("/api/cv/pdf", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json" },
+      body: JSON.stringify(validRenderRequest),
+    });
+
+    expect(response.status).toBe(500);
+    expect(result.objects.delete).toHaveBeenCalledOnce();
   });
 });
 

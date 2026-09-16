@@ -9,6 +9,9 @@ import type {
   CvRenderer,
   CvRepository,
   IdGenerator,
+  ObjectStore,
+  PdfArchiveRepository,
+  PdfGenerator,
   PdfQuotaSettingsRepository,
   PhotoRepository,
   UsageRepository,
@@ -19,15 +22,17 @@ import {
   importCvRequestSchema,
   importImproveRequestSchema,
   modifyCvRequestSchema,
+  pdfArchiveFilenameSchema,
   pdfQuotaSettingsSchema,
+  pdfRequestSchema,
   photoRequestSchema,
   renderCvRequestSchema,
   rewriteCvRequestSchema,
   savedCvInputSchema,
   translateCvRequestSchema,
 } from "@nomcci/cvmaker-contracts";
-import { aiDailyLimitFor, type ApplicationInput, type CvData, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
-import { Hono } from "hono";
+import { aiDailyLimitFor, pdfDailyLimitFor, type ApplicationInput, type CvData, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
+import { Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 
@@ -37,9 +42,12 @@ export interface ApiDependencies {
   cvInputs: CvInputRepository;
   applications: ApplicationRepository;
   photos: PhotoRepository;
+  pdfArchives: PdfArchiveRepository;
   pdfQuotas: PdfQuotaSettingsRepository;
   adminMetrics: AdminMetricsRepository;
   renderer: CvRenderer;
+  pdf: PdfGenerator;
+  objects: ObjectStore;
   ai: CvAiService;
   usage: UsageRepository;
   clock: Clock;
@@ -77,7 +85,7 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     return context.json({ authenticated: false });
   });
 
-  app.use("/api/*", async (context, next) => {
+  const authenticate: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
     const authorization = context.req.header("authorization");
     const token = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length)
@@ -86,6 +94,30 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     if (!principal) return context.json({ error: "unauthorized" }, 401);
     context.set("principal", principal);
     await next();
+  };
+  app.use("/api/*", authenticate);
+  app.use("/archives/*", authenticate);
+
+  app.get("/archives/:userId/output/:filename", async (context) => {
+    const principal = context.get("principal");
+    const filename = context.req.param("filename");
+    if (context.req.param("userId") !== principal.id || !pdfArchiveFilenameSchema.safeParse(filename).success) {
+      return context.json({ error: "not_found" }, 404);
+    }
+    const archive = await dependencies.pdfArchives.findByFilename(principal.id, filename);
+    if (!archive) return context.json({ error: "not_found" }, 404);
+    const bytes = await dependencies.objects.get(archive.objectKey);
+    if (!bytes) return context.json({ error: "not_found" }, 404);
+    const body = new Uint8Array(bytes.byteLength);
+    body.set(bytes);
+    return new Response(body.buffer, {
+      headers: {
+        "content-type": "application/pdf",
+        "content-disposition": `attachment; filename="${filename}"`,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
   });
 
   app.get("/api/me", async (context) => {
@@ -188,10 +220,96 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     return context.json({ limits });
   });
 
+  app.get("/api/archives", async (context) => {
+    const principal = context.get("principal");
+    const archives = (await dependencies.pdfArchives.list(principal.id, 20)).map((archive) => ({
+      id: archive.id,
+      filename: archive.filename,
+      sizeBytes: archive.sizeBytes,
+      createdAt: archive.createdAt,
+      downloadPath: archiveDownloadPath(principal.id, archive.filename),
+    }));
+    return context.json({ archives });
+  });
+
+  app.delete("/api/archives/:id", async (context) => {
+    const parsedId = idSchema.safeParse(context.req.param("id"));
+    if (!parsedId.success) return context.json(validationError(parsedId.error), 400);
+    const principal = context.get("principal");
+    const archive = await dependencies.pdfArchives.find(principal.id, parsedId.data);
+    if (!archive) return context.json({ error: "not_found" }, 404);
+    await dependencies.objects.delete(archive.objectKey);
+    await dependencies.pdfArchives.delete(principal.id, parsedId.data);
+    return context.json({ ok: true });
+  });
+
   app.post("/api/cv/render", async (context) => {
     const parsed = renderCvRequestSchema.safeParse(await readJson(context.req.raw));
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
     return context.json({ html: dependencies.renderer.render(toDomainValue<CvData>(parsed.data.cv), parsed.data) });
+  });
+
+  app.post("/api/cv/pdf", async (context) => {
+    const parsed = pdfRequestSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) return context.json(validationError(parsed.error), 400);
+    const principal = context.get("principal");
+    const cv = toDomainValue<CvData>(parsed.data.cv);
+    const html = dependencies.renderer.render(cv, parsed.data);
+    const contentHash = await dependencies.hasher.hash(html);
+    const existing = await dependencies.pdfArchives.findByHash(principal.id, contentHash);
+    if (existing) {
+      return context.json({ downloadPath: archiveDownloadPath(principal.id, existing.filename), reused: true });
+    }
+
+    const quotas = await dependencies.pdfQuotas.get();
+    let bytes: Uint8Array;
+    try {
+      bytes = await dependencies.pdf.generate(html);
+    } catch {
+      return context.json({ error: "pdf_generation_failed" }, 502);
+    }
+    if (bytes.byteLength === 0) return context.json({ error: "pdf_generation_failed" }, 502);
+    if (bytes.byteLength > quotas.maxArchivedPdfBytes) return context.json({ error: "pdf_too_large" }, 413);
+
+    const now = dependencies.clock.now();
+    const filename = createArchiveFilename(parsed.data.name || cv.personal_info.full_name, dependencies.ids.generate());
+    const objectKey = `archives/${principal.id}/output/${filename}`;
+    const archive = {
+      id: dependencies.ids.generate(),
+      filename,
+      objectKey,
+      sizeBytes: bytes.byteLength,
+      contentHash,
+      createdAt: now.toISOString(),
+    };
+    await dependencies.objects.put(objectKey, bytes);
+
+    try {
+      const committed = await dependencies.pdfArchives.tryCommitExport(
+        principal.id,
+        now.toISOString().slice(0, 10),
+        archive,
+        {
+          daily: pdfDailyLimitFor(principal.role, quotas),
+          maxArchivedPdfs: quotas.maxArchivedPdfs,
+          maxArchivedPdfBytes: quotas.maxArchivedPdfBytes,
+        },
+      );
+      if (committed.status === "created") {
+        return context.json({ downloadPath: archiveDownloadPath(principal.id, filename) }, 201);
+      }
+
+      await dependencies.objects.delete(objectKey);
+      if (committed.status === "duplicate") {
+        return context.json({ downloadPath: archiveDownloadPath(principal.id, committed.archive.filename), reused: true });
+      }
+      if (committed.status === "daily_limit_reached") return context.json({ error: "pdf_daily_limit_reached" }, 429);
+      if (committed.status === "archive_count_limit_reached") return context.json({ error: "pdf_archive_limit_reached" }, 429);
+      return context.json({ error: "pdf_storage_limit_reached" }, 429);
+    } catch (error) {
+      await dependencies.objects.delete(objectKey);
+      throw error;
+    }
   });
 
   app.post("/api/cv/import", async (context) => {
@@ -322,4 +440,19 @@ function preservePhoto(source: CvData, output: CvData): CvData {
     ...output,
     personal_info: { ...output.personal_info, photo_url: photoUrl },
   };
+}
+
+function createArchiveFilename(name: string, id: string): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "cv";
+  return `${id}-${slug}.pdf`;
+}
+
+function archiveDownloadPath(userId: string, filename: string): string {
+  return `/archives/${encodeURIComponent(userId)}/output/${encodeURIComponent(filename)}`;
 }
