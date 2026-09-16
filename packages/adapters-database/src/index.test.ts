@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  createDatabaseRepositories,
   createCvRepository,
   CvIdCollisionError,
   SqliteCvRepository,
@@ -141,6 +142,32 @@ describe("createCvRepository", () => {
   it("rejects missing and unsupported configuration", () => {
     expect(() => createCvRepository({ DATABASE_DIALECT: "sqlite" })).toThrow("DATABASE_URL is required");
     expect(() => createCvRepository({ DATABASE_DIALECT: "postgres", DATABASE_URL: "ignored" })).toThrow(
+      "Unsupported DATABASE_DIALECT",
+    );
+  });
+});
+
+describe("createDatabaseRepositories", () => {
+  it("selects the complete SQLite repository bundle", async () => {
+    const { filename } = await fixture();
+    const databaseUrl = pathToFileURL(filename).href.replace(/^file:/, "sqlite:");
+    const bundle = createDatabaseRepositories({ DATABASE_DIALECT: "SQLITE", DATABASE_URL: databaseUrl });
+    repositories.push(bundle);
+
+    expect(bundle).toBeInstanceOf(SqliteRepositoryBundle);
+    expect(bundle.cvs).toBeDefined();
+    expect(bundle.cvInputs).toBeDefined();
+    expect(bundle.applications).toBeDefined();
+    expect(bundle.usage).toBeDefined();
+    expect(bundle.photos).toBeDefined();
+    expect(bundle.pdfArchives).toBeDefined();
+    expect(bundle.pdfQuotas).toBeDefined();
+    expect(bundle.adminMetrics).toBeDefined();
+  });
+
+  it("rejects missing and unsupported configuration", () => {
+    expect(() => createDatabaseRepositories({ DATABASE_DIALECT: "sqlite" })).toThrow("DATABASE_URL is required");
+    expect(() => createDatabaseRepositories({ DATABASE_DIALECT: "postgres", DATABASE_URL: "ignored" })).toThrow(
       "Unsupported DATABASE_DIALECT",
     );
   });

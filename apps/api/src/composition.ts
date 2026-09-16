@@ -17,7 +17,7 @@ import {
   NodeSha256Hasher,
 } from "@nomcci/cvmaker-adapters-node";
 import { OpenAiChatModel, OpenAiCompatibleChatModel, OpenRouterChatModel } from "@nomcci/cvmaker-adapters-ai";
-import { createCvRepository, type ClosableCvRepository } from "@nomcci/cvmaker-adapters-database";
+import { createDatabaseRepositories, type ClosableDatabaseRepositories } from "@nomcci/cvmaker-adapters-database";
 import { PortableCvAiService } from "@nomcci/cvmaker-ai";
 import type { ApplicationServices, CvAiService, PdfGenerator } from "@nomcci/cvmaker-application";
 import { renderCvHtml } from "@nomcci/cvmaker-rendering";
@@ -29,19 +29,20 @@ const DEVELOPMENT_SESSION = "local-dev";
 export function createDevelopmentComposition(options: { objectRoot?: string; enableLogin?: boolean } = {}) {
   const clock = new NodeClock();
   const ids = new NodeIdGenerator();
-  const persistentCvs = process.env.DATABASE_DIALECT && process.env.DATABASE_URL
-    ? createCvRepository(process.env, { generateId: () => ids.generate(), now: () => clock.now() })
+  const hasDatabaseConfiguration = Boolean(process.env.DATABASE_DIALECT || process.env.DATABASE_URL);
+  const persistent = hasDatabaseConfiguration
+    ? createDatabaseRepositories(process.env, { generateId: () => ids.generate(), now: () => clock.now() })
     : null;
   const services: ApplicationServices = {
     auth: new FixtureAuthGateway(DEVELOPMENT_SESSION),
-    cvs: persistentCvs ?? new InMemoryCvRepository(ids, clock),
-    cvInputs: new InMemoryCvInputRepository(clock),
-    applications: new InMemoryApplicationRepository(ids, clock),
-    usage: new InMemoryUsageRepository(),
-    photos: new InMemoryPhotoRepository(ids, clock),
-    pdfArchives: new InMemoryPdfArchiveRepository(),
-    pdfQuotas: new InMemoryPdfQuotaSettingsRepository(),
-    adminMetrics: new FixtureAdminMetricsRepository(),
+    cvs: persistent?.cvs ?? new InMemoryCvRepository(ids, clock),
+    cvInputs: persistent?.cvInputs ?? new InMemoryCvInputRepository(clock),
+    applications: persistent?.applications ?? new InMemoryApplicationRepository(ids, clock),
+    usage: persistent?.usage ?? new InMemoryUsageRepository(),
+    photos: persistent?.photos ?? new InMemoryPhotoRepository(ids, clock),
+    pdfArchives: persistent?.pdfArchives ?? new InMemoryPdfArchiveRepository(),
+    pdfQuotas: persistent?.pdfQuotas ?? new InMemoryPdfQuotaSettingsRepository(),
+    adminMetrics: persistent?.adminMetrics ?? new FixtureAdminMetricsRepository(),
     ai: createCvAiService(process.env),
     renderer: { render: renderCvHtml },
     pdf: new UnsupportedDevelopmentPdfGenerator(),
@@ -71,7 +72,7 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
     developmentLogin: { enabled: options.enableLogin ?? true, sessionToken: DEVELOPMENT_SESSION },
   });
 
-  return { app, services, close: () => closeRepository(persistentCvs) };
+  return { app, services, close: () => closeRepositories(persistent) };
 }
 
 export function createCvAiService(environment: NodeJS.ProcessEnv, fetchImplementation?: typeof fetch): CvAiService {
@@ -137,8 +138,8 @@ function parseBoolean(value: string | undefined, name: string): boolean | undefi
   throw new Error(`${name} must be true or false`);
 }
 
-async function closeRepository(repository: ClosableCvRepository | null): Promise<void> {
-  await repository?.close();
+async function closeRepositories(repositories: ClosableDatabaseRepositories | null): Promise<void> {
+  await repositories?.close();
 }
 
 class UnsupportedDevelopmentPdfGenerator implements PdfGenerator {
