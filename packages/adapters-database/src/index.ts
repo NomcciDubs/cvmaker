@@ -1,4 +1,5 @@
 export { MysqlCvRepository } from "./mysql";
+export { MysqlRepositoryBundle } from "./mysql-repositories";
 export { SqliteCvRepository } from "./sqlite";
 export { SqliteRepositoryBundle } from "./sqlite-repositories";
 export {
