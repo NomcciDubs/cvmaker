@@ -6,6 +6,7 @@ import type { CvData, CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRe
 import { extractPdfText } from "../pdf-import";
 import { clearDraft, loadDraft, saveDraft, type CvDraftData } from "../draft-store";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
+import { ApplicationTracker } from "./ApplicationTracker";
 import { CvLibrary } from "./CvLibrary";
 import { PdfArchives, PdfExportButton } from "./PdfArchives";
 import { PhotoManager } from "./PhotoManager";
@@ -455,6 +456,23 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
         </section>
       )}
       {!pendingDraft && <PdfArchives api={api} messages={messages} locale={locale} userId={userId} />}
+      {!pendingDraft && (
+        <ApplicationTracker
+          api={api}
+          messages={messages}
+          locale={locale}
+          userId={userId}
+          defaultRole={targetRole}
+          snapshot={{
+            cv: state.cv,
+            html: state.html,
+            language: cvLanguage,
+            template: state.choice.template,
+            style: state.choice.style,
+            jobDescription: jobDescription.trim() || undefined,
+          }}
+        />
+      )}
     </main>
   );
 }

@@ -74,6 +74,22 @@ export interface ExportPdfResponse {
   reused?: boolean;
 }
 
+export interface ApplicationSnapshot extends RenderCvRequest {
+  company: string;
+  role: string;
+  status?: string;
+  jobUrl?: string;
+  jobDescription?: string;
+  html: string;
+}
+
+export interface ApplicationRecord extends ApplicationSnapshot {
+  id: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Session {
   user: {
     id: string;
