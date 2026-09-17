@@ -121,6 +121,12 @@ h1 { max-width: 820px; margin: 0; font-size: clamp(3.2rem, 7vw, 7.3rem); line-he
 .library-item-actions .button-link { font-size: .85rem; }
 .tracker-form { padding: 1rem; background: var(--paper); border: 1px solid var(--line); }
 .tracker-form .wizard-actions { margin-top: 1rem; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem; margin-bottom: 1rem; }
+.metric-grid > div { padding: .8rem; background: var(--paper); border: 1px solid var(--line); text-align: center; }
+.metric-grid strong { display: block; font: 500 1.6rem/1 Georgia, serif; }
+.metric-grid small { color: #66736d; }
+.metric-row { display: flex; justify-content: space-between; gap: 1rem; margin: 0; padding: .6rem .8rem; background: var(--paper); border: 1px solid var(--line); font-size: .82rem; }
+.admin-panel h3 { margin: 1.25rem 0 .5rem; font-size: 1.05rem; }
 .allowance-note { margin: 0 0 1.25rem; padding: .75rem 1rem; border-left: 3px solid var(--green); background: #edf0e7; color: #496057; font-size: .82rem; line-height: 1.5; }
 .final-preview { min-height: 560px; height: 680px; padding: 1rem; }
 .final-preview iframe { min-height: 520px; }

@@ -90,6 +90,29 @@ export interface ApplicationRecord extends ApplicationSnapshot {
   updatedAt: string;
 }
 
+export interface AdminMetrics {
+  totals: { applications: number; users: number; companies: number };
+  savedCvs: { savedCvs: number };
+  usage: { aiUses: number; aiUsers: number };
+  topCompanies: Array<{ company: string; applications: number }>;
+  recentApplications: Array<{
+    company: string;
+    role: string;
+    status: string;
+    language: Locale;
+    style: string;
+    createdAt: string;
+  }>;
+}
+
+export interface PdfQuotaSettings {
+  defaultDaily: number;
+  friendDaily: number;
+  superAdminDaily: number | null;
+  maxArchivedPdfs: number;
+  maxArchivedPdfBytes: number;
+}
+
 export interface Session {
   user: {
     id: string;

@@ -48,7 +48,7 @@ export function App({ api }: AppProps) {
         </div>
         <SessionCard api={api} messages={messages} />
       </section>
-      <CvEditor api={api} locale={locale} messages={messages} userId={session.data?.user.id} />
+      <CvEditor api={api} locale={locale} messages={messages} userId={session.data?.user.id} userRole={session.data?.currentPage.role} />
       <footer><span>Nomcci CVMaker</span><span>Incremental frontend foundation · 2026</span></footer>
     </div>
   );

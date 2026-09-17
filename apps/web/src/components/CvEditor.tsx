@@ -6,6 +6,7 @@ import type { CvData, CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRe
 import { extractPdfText } from "../pdf-import";
 import { clearDraft, loadDraft, saveDraft, type CvDraftData } from "../draft-store";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
+import { AdminPanel } from "./AdminPanel";
 import { ApplicationTracker } from "./ApplicationTracker";
 import { CvLibrary } from "./CvLibrary";
 import { PdfArchives, PdfExportButton } from "./PdfArchives";
@@ -16,11 +17,12 @@ interface CvEditorProps {
   locale: Locale;
   messages: Messages;
   userId?: string;
+  userRole?: string;
 }
 
 const blankExperience = { role: "", company: "", location: "", start_date: "", end_date: "", description: [] as string[] };
 
-export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
+export function CvEditor({ api, locale, messages, userId, userRole }: CvEditorProps) {
   const queryClient = useQueryClient();
   const [state, dispatch] = useReducer(wizardReducer, undefined, createWizardState);
   const [highlights, setHighlights] = useState("");
@@ -473,6 +475,7 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
           }}
         />
       )}
+      {!pendingDraft && <AdminPanel api={api} messages={messages} locale={locale} userRole={userRole} />}
     </main>
   );
 }
