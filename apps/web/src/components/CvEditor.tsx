@@ -22,6 +22,9 @@ export function CvEditor({ api, locale, messages }: CvEditorProps) {
   const [importName, setImportName] = useState("");
   const [fileError, setFileError] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
+  const [targetRole, setTargetRole] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [instruction, setInstruction] = useState("");
   const render = useMutation({
     mutationFn: (body: RenderCvRequest) => api.renderCv(body),
     onSuccess: (data) => dispatch({ type: "rendered", html: data.html }),
@@ -42,6 +45,42 @@ export function CvEditor({ api, locale, messages }: CvEditorProps) {
       dispatch({ type: "imported", cv: result.cv, importWorkflowId: result.importWorkflowId });
       dispatch({ type: "rendered", html: result.html });
     },
+  });
+  const applyAi = useMutation({
+    mutationFn: async () => {
+      const combinedInstruction = [
+        targetRole.trim() ? `Tailor this CV for the target role: ${targetRole.trim()}.` : "",
+        instruction.trim(),
+      ].filter(Boolean).join("\n");
+      const consumedImportWorkflow = Boolean(state.importWorkflowId && state.importedOriginalCv);
+      const result = consumedImportWorkflow
+        ? await api.improveImportedCv({
+          cv: state.cv,
+          originalCv: state.importedOriginalCv!,
+          importWorkflowId: state.importWorkflowId!,
+          targetRole: targetRole.trim() || undefined,
+          instruction: combinedInstruction,
+          jobDescription: jobDescription.trim() || undefined,
+          language: locale,
+        })
+        : await api.modifyCv({
+          cv: state.cv,
+          instruction: combinedInstruction,
+          jobDescription: jobDescription.trim() || undefined,
+          language: locale,
+        });
+      const preview = await api.renderCv({ cv: result.cv, language: locale, template: state.choice.template, style: state.choice.style });
+      return { cv: result.cv, html: preview.html, consumedImportWorkflow };
+    },
+    onSuccess: (result) => dispatch({ type: "aiApplied", ...result }),
+  });
+  const undoAi = useMutation({
+    mutationFn: async () => {
+      if (!state.previousCv) throw new Error("No AI result to undo");
+      const preview = await api.renderCv({ cv: state.previousCv, language: locale, template: state.choice.template, style: state.choice.style });
+      return preview.html;
+    },
+    onSuccess: (html) => dispatch({ type: "undoAi", html }),
   });
 
   async function selectPdf(file: File | undefined) {
@@ -204,7 +243,23 @@ export function CvEditor({ api, locale, messages }: CvEditorProps) {
       {state.step === "improve" && (
         <section className="wizard-panel improve-panel">
           <header className="section-heading"><span>04</span><div><h2>{messages.improve}</h2><p>{messages.improveHint}</p></div></header>
-          <div className="coming-next"><p>{messages.improveFoundation}</p></div>
+          <div className="improve-grid">
+            <form onSubmit={(event) => {
+              event.preventDefault();
+              if (targetRole.trim() || instruction.trim()) applyAi.mutate();
+            }}>
+              {state.importWorkflowId && <p className="allowance-note">{messages.importExtraUse}</p>}
+              <Field label={messages.targetRole} value={targetRole} onChange={setTargetRole} />
+              <label>{messages.jobDescription}<textarea rows={6} value={jobDescription} onChange={(event) => setJobDescription(event.target.value)} /></label>
+              <label>{messages.instruction}<textarea rows={4} value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
+              <div className="wizard-actions improve-actions">
+                <button className="secondary" type="button" onClick={() => undoAi.mutate()} disabled={!state.previousCv || undoAi.isPending}>{messages.undoAi}</button>
+                <button type="submit" disabled={(!targetRole.trim() && !instruction.trim()) || applyAi.isPending}>{applyAi.isPending ? messages.applyingAi : messages.applyAll}</button>
+              </div>
+              {(applyAi.isError || undoAi.isError) && <p className="error" role="alert">{messages.aiError}</p>}
+            </form>
+            <div className="final-preview preview-frame"><iframe title={messages.finalPreview} sandbox="" srcDoc={state.html} /></div>
+          </div>
           <WizardActions onBack={() => dispatch({ type: "goTo", step: "preview" })} messages={messages} />
         </section>
       )}

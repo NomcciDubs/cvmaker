@@ -27,12 +27,15 @@ export interface WizardState {
   previewStale: boolean;
   importWorkflowId: string | null;
   importedOriginalCv: CvData | null;
+  previousCv: CvData | null;
 }
 
 export type WizardAction =
   | { type: "selectTemplate"; choice: TemplateChoice }
   | { type: "updateCv"; cv: CvData }
   | { type: "imported"; cv: CvData; importWorkflowId: string }
+  | { type: "aiApplied"; cv: CvData; html: string; consumedImportWorkflow: boolean }
+  | { type: "undoAi"; html: string }
   | { type: "goTo"; step: WizardStep }
   | { type: "rendered"; html: string };
 
@@ -48,6 +51,7 @@ export function createWizardState(): WizardState {
     previewStale: false,
     importWorkflowId: null,
     importedOriginalCv: null,
+    previousCv: null,
   };
 }
 
@@ -60,6 +64,20 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
   }
   if (action.type === "imported") {
     return { ...state, cv: action.cv, importWorkflowId: action.importWorkflowId, importedOriginalCv: action.cv };
+  }
+  if (action.type === "aiApplied") {
+    return {
+      ...state,
+      previousCv: state.cv,
+      cv: action.cv,
+      html: action.html,
+      importWorkflowId: action.consumedImportWorkflow ? null : state.importWorkflowId,
+      previewStale: false,
+    };
+  }
+  if (action.type === "undoAi") {
+    if (!state.previousCv) return state;
+    return { ...state, cv: state.previousCv, previousCv: null, html: action.html, previewStale: false };
   }
   if (action.type === "rendered") {
     return { ...state, html: action.html, previewStale: false, step: "preview", maxStep: Math.max(state.maxStep, 2) };

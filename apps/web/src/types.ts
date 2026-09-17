@@ -20,6 +20,19 @@ export interface ImportCvResponse {
   importWorkflowId: string;
 }
 
+export interface ModifyCvRequest {
+  cv: CvData;
+  instruction: string;
+  jobDescription?: string;
+  language: Locale;
+}
+
+export interface ImportImproveRequest extends ModifyCvRequest {
+  originalCv: CvData;
+  importWorkflowId: string;
+  targetRole?: string;
+}
+
 export interface Session {
   user: {
     id: string;

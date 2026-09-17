@@ -41,4 +41,17 @@ describe("wizardReducer", () => {
     expect(imported.importedOriginalCv).toBe(cv);
     expect(imported.importWorkflowId).toBe("workflow-1");
   });
+
+  it("stores one AI undo snapshot and restores it with fresh HTML", () => {
+    let state = createWizardState();
+    const changedCv = { ...state.cv, summary: "AI summary" };
+    state = wizardReducer(state, { type: "aiApplied", cv: changedCv, html: "<p>AI</p>", consumedImportWorkflow: false });
+
+    expect(state.previousCv?.summary).toBe("");
+    expect(state.cv.summary).toBe("AI summary");
+    state = wizardReducer(state, { type: "undoAi", html: "<p>Original</p>" });
+    expect(state.cv.summary).toBe("");
+    expect(state.previousCv).toBeNull();
+    expect(state.html).toBe("<p>Original</p>");
+  });
 });
