@@ -25,18 +25,30 @@ export interface WizardState {
   cv: CvData;
   html: string;
   previewStale: boolean;
+  importWorkflowId: string | null;
+  importedOriginalCv: CvData | null;
 }
 
 export type WizardAction =
   | { type: "selectTemplate"; choice: TemplateChoice }
   | { type: "updateCv"; cv: CvData }
+  | { type: "imported"; cv: CvData; importWorkflowId: string }
   | { type: "goTo"; step: WizardStep }
   | { type: "rendered"; html: string };
 
 export function createWizardState(): WizardState {
   const cv = createBlankCv();
   cv.experience = [{ role: "", company: "", location: "", start_date: "", end_date: "", description: [] }];
-  return { step: "template", maxStep: 0, choice: TEMPLATE_CHOICES[0]!, cv, html: "", previewStale: false };
+  return {
+    step: "template",
+    maxStep: 0,
+    choice: TEMPLATE_CHOICES[0]!,
+    cv,
+    html: "",
+    previewStale: false,
+    importWorkflowId: null,
+    importedOriginalCv: null,
+  };
 }
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -45,6 +57,9 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
   }
   if (action.type === "updateCv") {
     return { ...state, cv: action.cv, previewStale: Boolean(state.html) };
+  }
+  if (action.type === "imported") {
+    return { ...state, cv: action.cv, importWorkflowId: action.importWorkflowId, importedOriginalCv: action.cv };
   }
   if (action.type === "rendered") {
     return { ...state, html: action.html, previewStale: false, step: "preview", maxStep: Math.max(state.maxStep, 2) };

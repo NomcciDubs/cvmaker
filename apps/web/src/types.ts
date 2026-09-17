@@ -10,6 +10,16 @@ export interface RenderCvRequest {
   language: Locale;
 }
 
+export interface ImportCvRequest {
+  description: string;
+  language: Locale;
+}
+
+export interface ImportCvResponse {
+  cv: CvData;
+  importWorkflowId: string;
+}
+
 export interface Session {
   user: {
     id: string;

@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import type { CvmakerApi } from "../api/cvmaker";
 import type { Messages } from "../i18n/messages";
 import type { CvData, CvStyle, Locale, RenderCvRequest } from "../types";
+import { extractPdfText } from "../pdf-import";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
 
 interface CvEditorProps {
@@ -16,10 +17,53 @@ const blankExperience = { role: "", company: "", location: "", start_date: "", e
 export function CvEditor({ api, locale, messages }: CvEditorProps) {
   const [state, dispatch] = useReducer(wizardReducer, undefined, createWizardState);
   const [highlights, setHighlights] = useState("");
+  const [sourceMode, setSourceMode] = useState<"manual" | "import">("manual");
+  const [importText, setImportText] = useState("");
+  const [importName, setImportName] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
   const render = useMutation({
     mutationFn: (body: RenderCvRequest) => api.renderCv(body),
     onSuccess: (data) => dispatch({ type: "rendered", html: data.html }),
   });
+  const importCv = useMutation({
+    mutationFn: async ({ description, name }: { description: string; name?: string }) => {
+      await api.saveCvInput({ content: description, name });
+      const imported = await api.importCv({ description, language: locale });
+      const preview = await api.renderCv({
+        cv: imported.cv,
+        language: locale,
+        template: state.choice.template,
+        style: state.choice.style,
+      });
+      return { ...imported, html: preview.html };
+    },
+    onSuccess: (result) => {
+      dispatch({ type: "imported", cv: result.cv, importWorkflowId: result.importWorkflowId });
+      dispatch({ type: "rendered", html: result.html });
+    },
+  });
+
+  async function selectPdf(file: File | undefined) {
+    if (!file) return;
+    setFileError("");
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setFileError(messages.pdfOnly);
+      return;
+    }
+    setIsExtracting(true);
+    try {
+      const text = await extractPdfText(file);
+      if (!text.trim()) throw new Error("empty_pdf");
+      if (text.length > 200_000) throw new Error("pdf_too_long");
+      setImportText(text);
+      setImportName(file.name.replace(/\.pdf$/i, ""));
+    } catch {
+      setFileError(messages.pdfReadError);
+    } finally {
+      setIsExtracting(false);
+    }
+  }
 
   function updatePersonal(field: keyof CvData["personal_info"], value: string) {
     dispatch({
@@ -92,7 +136,11 @@ export function CvEditor({ api, locale, messages }: CvEditorProps) {
       {state.step === "source" && (
         <section className="wizard-panel source-panel">
           <header className="section-heading"><span>02</span><div><h2>{messages.editor}</h2><p>{messages.editorHint}</p></div></header>
-          <form onSubmit={submit}>
+          <div className="source-tabs" role="tablist" aria-label={messages.sourceMethod}>
+            <button type="button" role="tab" aria-selected={sourceMode === "manual"} onClick={() => setSourceMode("manual")}>{messages.manualEntry}</button>
+            <button type="button" role="tab" aria-selected={sourceMode === "import"} onClick={() => setSourceMode("import")}>{messages.importCv}</button>
+          </div>
+          {sourceMode === "manual" ? <form onSubmit={submit}>
             <div className="field-grid">
               <Field label={messages.fullName} value={state.cv.personal_info.full_name} required onChange={(value) => updatePersonal("full_name", value)} />
               <Field label={messages.professionalTitle} value={state.cv.personal_info.title ?? ""} onChange={(value) => updatePersonal("title", value)} />
@@ -111,7 +159,30 @@ export function CvEditor({ api, locale, messages }: CvEditorProps) {
               <button type="submit" disabled={render.isPending}>{render.isPending ? messages.rendering : messages.render}</button>
             </div>
             {render.isError && <p className="error" role="alert">{messages.renderError}</p>}
-          </form>
+          </form> : <form onSubmit={(event) => {
+            event.preventDefault();
+            const description = importText.trim();
+            if (description) importCv.mutate({ description, name: importName || undefined });
+          }}>
+            <label className="pdf-drop">
+              <span>{isExtracting ? messages.extractingPdf : messages.uploadPdf}</span>
+              <small>{messages.uploadPdfHint}</small>
+              <input type="file" accept="application/pdf,.pdf" disabled={isExtracting || importCv.isPending} onChange={(event) => void selectPdf(event.target.files?.[0])} />
+            </label>
+            <label>{messages.pasteCvText}
+              <textarea value={importText} maxLength={200_000} rows={14} onChange={(event) => {
+                setImportText(event.target.value);
+                setFileError("");
+              }} />
+            </label>
+            <div className="character-count">{importText.length.toLocaleString(locale)} / 200,000</div>
+            <div className="wizard-actions">
+              <button className="secondary" type="button" onClick={() => dispatch({ type: "goTo", step: "template" })}>{messages.back}</button>
+              <button type="submit" disabled={!importText.trim() || isExtracting || importCv.isPending}>{importCv.isPending ? messages.importingCv : messages.importWithAi}</button>
+            </div>
+            {fileError && <p className="error" role="alert">{fileError}</p>}
+            {importCv.isError && <p className="error" role="alert">{messages.importError}</p>}
+          </form>}
         </section>
       )}
 

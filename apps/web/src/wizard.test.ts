@@ -31,4 +31,14 @@ describe("wizardReducer", () => {
     const state = createWizardState();
     expect(wizardReducer(state, { type: "goTo", step: "improve" })).toBe(state);
   });
+
+  it("keeps the original imported CV and workflow allowance", () => {
+    const state = createWizardState();
+    const cv = { ...state.cv, personal_info: { full_name: "Grace Hopper" } };
+    const imported = wizardReducer(state, { type: "imported", cv, importWorkflowId: "workflow-1" });
+
+    expect(imported.cv).toBe(cv);
+    expect(imported.importedOriginalCv).toBe(cv);
+    expect(imported.importWorkflowId).toBe("workflow-1");
+  });
 });

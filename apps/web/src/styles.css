@@ -56,6 +56,14 @@ h1 { max-width: 820px; margin: 0; font-size: clamp(3.2rem, 7vw, 7.3rem); line-he
 .template-swatch i:first-child { width: 48%; height: 10px; background: var(--ink); }
 .template-swatch.cv_sidebar { padding-left: 38%; background: linear-gradient(90deg, var(--green) 0 30%, white 30%); }
 .source-panel form { max-width: 780px; }
+.source-tabs { display: inline-flex; gap: 3px; margin-bottom: 2rem; padding: 3px; border: 1px solid var(--ink); border-radius: 999px; }
+.source-tabs button { border: 0; border-radius: 999px; padding: .65rem 1rem; background: transparent; color: var(--ink); cursor: pointer; }
+.source-tabs button[aria-selected="true"] { background: var(--ink); color: white; }
+.pdf-drop { display: grid; place-items: center; min-height: 150px; padding: 1.5rem; border: 1px dashed var(--green); background: #edf0e7; text-align: center; cursor: pointer; }
+.pdf-drop span { color: var(--ink); font: 500 1.3rem/1.2 Georgia, serif; }
+.pdf-drop small { color: #66736d; font-weight: 400; }
+.pdf-drop input { width: auto; border: 0; box-shadow: none; }
+.character-count { margin-top: -.65rem; color: #66736d; font-size: .72rem; text-align: right; }
 .wizard-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 2rem; }
 .wizard-actions button { border: 1px solid var(--ink); background: var(--ink); color: white; padding: .9rem 1.5rem; border-radius: 2px; font-weight: 600; cursor: pointer; box-shadow: 5px 5px 0 var(--lime); }
 .wizard-actions button.secondary { background: transparent; color: var(--ink); box-shadow: none; }
