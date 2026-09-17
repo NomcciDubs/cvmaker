@@ -2,11 +2,12 @@ import { useEffect, useReducer, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CvmakerApi } from "../api/cvmaker";
 import type { Messages } from "../i18n/messages";
-import type { CvData, CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRecord } from "../types";
+import type { CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRecord } from "../types";
 import { extractPdfText } from "../pdf-import";
 import { clearDraft, loadDraft, saveDraft, type CvDraftData } from "../draft-store";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
 import { AdminPanel } from "./AdminPanel";
+import { CvForm } from "./CvForm";
 import { ApplicationTracker } from "./ApplicationTracker";
 import { CvLibrary } from "./CvLibrary";
 import { PdfArchives, PdfExportButton } from "./PdfArchives";
@@ -20,12 +21,9 @@ interface CvEditorProps {
   userRole?: string;
 }
 
-const blankExperience = { role: "", company: "", location: "", start_date: "", end_date: "", description: [] as string[] };
-
 export function CvEditor({ api, locale, messages, userId, userRole }: CvEditorProps) {
   const queryClient = useQueryClient();
   const [state, dispatch] = useReducer(wizardReducer, undefined, createWizardState);
-  const [highlights, setHighlights] = useState("");
   const [sourceMode, setSourceMode] = useState<"manual" | "import">("manual");
   const [importText, setImportText] = useState("");
   const [importName, setImportName] = useState("");
@@ -231,7 +229,6 @@ export function CvEditor({ api, locale, messages, userId, userRole }: CvEditorPr
     setTargetRole(record.targetRole ?? "");
     setJobDescription("");
     setInstruction("");
-    setHighlights(record.cv.experience?.[0]?.description?.join("\n") ?? "");
   }
 
   async function selectPdf(file: File | undefined) {
@@ -255,13 +252,6 @@ export function CvEditor({ api, locale, messages, userId, userRole }: CvEditorPr
     }
   }
 
-  function updatePersonal(field: keyof CvData["personal_info"], value: string) {
-    dispatch({
-      type: "updateCv",
-      cv: { ...state.cv, personal_info: { ...state.cv.personal_info, [field]: value } },
-    });
-  }
-
   function selectPhoto(dataUrl: string | undefined) {
     const { photo_url: _removed, ...rest } = state.cv.personal_info;
     dispatch({
@@ -273,21 +263,10 @@ export function CvEditor({ api, locale, messages, userId, userRole }: CvEditorPr
     });
   }
 
-  function updateExperience(field: "role" | "company", value: string) {
-    const experience = state.cv.experience?.[0] ?? blankExperience;
-    dispatch({ type: "updateCv", cv: { ...state.cv, experience: [{ ...experience, [field]: value }] } });
-  }
-
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const experience = state.cv.experience?.[0] ?? blankExperience;
-    const preparedCv = {
-      ...state.cv,
-      experience: [{ ...experience, description: highlights.split("\n").map((line) => line.trim()).filter(Boolean) }],
-    };
-    dispatch({ type: "updateCv", cv: preparedCv });
     render.mutate({
-      cv: preparedCv,
+      cv: state.cv,
       language: cvLanguage,
       template: state.choice.template,
       style: state.choice.style,
@@ -348,19 +327,7 @@ export function CvEditor({ api, locale, messages, userId, userRole }: CvEditorPr
             <button type="button" role="tab" aria-selected={sourceMode === "import"} onClick={() => setSourceMode("import")}>{messages.importCv}</button>
           </div>
           {sourceMode === "manual" ? <form onSubmit={submit}>
-            <div className="field-grid">
-              <Field label={messages.fullName} value={state.cv.personal_info.full_name} required onChange={(value) => updatePersonal("full_name", value)} />
-              <Field label={messages.professionalTitle} value={state.cv.personal_info.title ?? ""} onChange={(value) => updatePersonal("title", value)} />
-              <Field label={messages.email} value={state.cv.personal_info.email ?? ""} type="email" onChange={(value) => updatePersonal("email", value)} />
-              <Field label={messages.phone} value={state.cv.personal_info.phone ?? ""} onChange={(value) => updatePersonal("phone", value)} />
-              <Field label={messages.location} value={state.cv.personal_info.location ?? ""} onChange={(value) => updatePersonal("location", value)} />
-            </div>
-            <label>{messages.summary}<textarea value={state.cv.summary ?? ""} rows={4} onChange={(event) => dispatch({ type: "updateCv", cv: { ...state.cv, summary: event.target.value } })} /></label>
-            <div className="field-grid">
-              <Field label={messages.role} value={state.cv.experience?.[0]?.role ?? ""} onChange={(value) => updateExperience("role", value)} />
-              <Field label={messages.company} value={state.cv.experience?.[0]?.company ?? ""} onChange={(value) => updateExperience("company", value)} />
-            </div>
-            <label>{messages.roleDescription}<textarea value={highlights} rows={4} onChange={(event) => setHighlights(event.target.value)} /></label>
+            <CvForm cv={state.cv} messages={messages} onChange={(cv) => dispatch({ type: "updateCv", cv })} />
             <div className="wizard-actions">
               <button className="secondary" type="button" onClick={() => dispatch({ type: "goTo", step: "template" })}>{messages.back}</button>
               <button type="submit" disabled={render.isPending}>{render.isPending ? messages.rendering : messages.render}</button>
