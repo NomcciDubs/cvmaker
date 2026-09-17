@@ -209,12 +209,32 @@ class MysqlUsageRepository implements UsageRepository {
       return true;
     }
 
-    const [result] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO daily_usage (user_id, usage_date, count, updated_at) VALUES (?, ?, 1, ?)
-       ON DUPLICATE KEY UPDATE count = IF(count < ?, count + 1, count)`,
-      [userId, date, timestamp, limit],
-    );
-    return result.affectedRows > 0;
+    // affectedRows cannot distinguish a saturated counter through the binary
+    // protocol, so the check runs under a row lock like the SQLite transaction.
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<(RowDataPacket & { count: number })[]>(
+        "SELECT count FROM daily_usage WHERE user_id = ? AND usage_date = ? FOR UPDATE",
+        [userId, date],
+      );
+      if (Number(rows[0]?.count ?? 0) >= limit) {
+        await connection.rollback();
+        return false;
+      }
+      await connection.execute(
+        `INSERT INTO daily_usage (user_id, usage_date, count, updated_at) VALUES (?, ?, 1, ?)
+         ON DUPLICATE KEY UPDATE count = count + 1, updated_at = VALUES(updated_at)`,
+        [userId, date, timestamp],
+      );
+      await connection.commit();
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async createImportWorkflow(userId: string, workflowId: string, cvHash: string, expiresAt: Date): Promise<void> {
