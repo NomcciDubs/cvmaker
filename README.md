@@ -11,7 +11,9 @@ packages/domain           Entities and business policies
 packages/application      Use cases and output port contracts
 packages/contracts        Runtime-validated HTTP contracts
 packages/rendering        Deterministic CV-to-HTML renderer
-packages/adapters-node    Local auth, AI, files, clock, IDs, and hashing
+packages/ai               CV prompts, normalization, and AI service
+packages/adapters-ai      Ollama, OpenAI, OpenRouter, and OpenAI-compatible models
+packages/adapters-node    Local auth, files, clock, IDs, and hashing
 packages/adapters-database SQLite and MySQL repositories
 database/sqlite           SQLite schema
 database/mysql            MySQL schema
@@ -30,11 +32,20 @@ Dependencies point toward `domain` and `application`. Infrastructure adapters im
 ```powershell
 npm install
 npm test
-npm run typecheck:portable
+npm run typecheck
 npm run build
 ```
 
 The default development composition uses deterministic local authentication and AI behavior. No external credentials are required.
+
+Run the shared repository contract against a real MySQL instance with:
+
+```powershell
+$env:MYSQL_TEST_URL = "mysql://root@127.0.0.1:3306/cvmaker"
+npm test --workspace @nomcci/cvmaker-adapters-database
+```
+
+Without `MYSQL_TEST_URL`, that contract is skipped and SQLite covers the same behavior.
 
 ## SQLite Development
 
@@ -113,6 +124,16 @@ AI_JSON_MODE=false
 ```
 
 The frontend uses same-origin `/api` requests. During Vite development, `VITE_API_PROXY_TARGET` selects the API process behind the proxy.
+
+## Web App
+
+The React app (`apps/web`) is a four-step wizard (Template → Source → Preview → Improve) with English and Spanish from the start:
+
+- Six template/style combinations over the canonical server renderer.
+- Manual structured editing (experience, education, skills, languages, links) plus text/PDF import with local PDF.js extraction.
+- Single-credit AI apply-all with import-workflow allowance support and one-level undo.
+- Private per-user drafts (`cvmaker_unsaved_draft_v2`), saved sources/CVs, photo library (10 photos, FIFO), PDF export/archive, job tracker, and a `SUPER_ADMIN` metrics/limits panel.
+- Development sign-in/out uses the same-origin `/api/dev/login` and `/api/dev/logout` endpoints; production must replace them with the private auth adapter.
 
 ## Deployment Adapters
 
