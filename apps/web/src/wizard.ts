@@ -1,4 +1,5 @@
 import { createBlankCv, type CvData, type CvStyle, type CvTemplate } from "@nomcci/cvmaker-domain";
+import type { CvDraftData } from "./draft-store";
 
 export const WIZARD_STEPS = ["template", "source", "preview", "improve"] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
@@ -31,11 +32,13 @@ export interface WizardState {
 }
 
 export type WizardAction =
+  | { type: "reset" }
   | { type: "selectTemplate"; choice: TemplateChoice }
   | { type: "updateCv"; cv: CvData }
   | { type: "imported"; cv: CvData; importWorkflowId: string }
   | { type: "aiApplied"; cv: CvData; html: string; consumedImportWorkflow: boolean }
   | { type: "undoAi"; html: string }
+  | { type: "restoreDraft"; draft: CvDraftData }
   | { type: "goTo"; step: WizardStep }
   | { type: "rendered"; html: string };
 
@@ -56,6 +59,23 @@ export function createWizardState(): WizardState {
 }
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
+  if (action.type === "reset") return createWizardState();
+  if (action.type === "restoreDraft") {
+    const choice = TEMPLATE_CHOICES.find(({ template, style }) => template === action.draft.template && style === action.draft.style);
+    if (!choice) return state;
+    return {
+      ...state,
+      step: action.draft.step,
+      maxStep: Math.max(action.draft.maxStep, WIZARD_STEPS.indexOf(action.draft.step)),
+      choice,
+      cv: action.draft.cv,
+      html: action.draft.html,
+      previewStale: false,
+      importWorkflowId: action.draft.importWorkflowId,
+      importedOriginalCv: action.draft.importedOriginalCv,
+      previousCv: null,
+    };
+  }
   if (action.type === "selectTemplate") {
     return { ...state, choice: action.choice, previewStale: Boolean(state.html) };
   }

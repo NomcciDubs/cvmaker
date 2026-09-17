@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { CvmakerApi } from "../api/cvmaker";
 import { getMessages } from "../i18n/messages";
+import { saveDraft } from "../draft-store";
 import { CvEditor } from "./CvEditor";
 
 describe("CvEditor", () => {
@@ -106,5 +107,39 @@ describe("CvEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "Undo AI result" }));
     await waitFor(() => expect(screen.getByTitle("Final CV preview")).toHaveAttribute("srcdoc", "<article>Original again</article>"));
+  });
+
+  it("asks before restoring a version 2 draft scoped to the current user", async () => {
+    const user = userEvent.setup();
+    saveDraft(localStorage, "user-a", {
+      step: "source",
+      maxStep: 1,
+      sourceMode: "manual",
+      cv: { personal_info: { full_name: "Draft Owner" }, experience: [] },
+      html: "",
+      template: "cv_base",
+      style: "minimal",
+      cvLanguage: "en",
+      sourceInput: "",
+      importName: "",
+      importWorkflowId: null,
+      importedOriginalCv: null,
+      targetRole: "",
+      jobDescription: "",
+      instruction: "",
+      updatedAt: "2026-09-16T00:00:00.000Z",
+    });
+    const api = { renderCv: vi.fn(), getSession: vi.fn() } as unknown as CvmakerApi;
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CvEditor api={api} locale="en" messages={getMessages("en")} userId="user-a" />
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Restore draft" }));
+    expect(screen.getByLabelText("Full name")).toHaveValue("Draft Owner");
+    expect(screen.getByRole("button", { name: /Source/ })).toHaveAttribute("aria-current", "step");
   });
 });

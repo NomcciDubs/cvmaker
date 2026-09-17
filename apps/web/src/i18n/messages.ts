@@ -77,6 +77,11 @@ const messages = {
     aiError: "The AI change could not be completed. Your current CV is unchanged.",
     importExtraUse: "This imported CV includes one extra improvement use for 24 hours.",
     finalPreview: "Final CV preview",
+    draftTitle: "Continue your draft?",
+    draftBody: "A private draft from your last session is available on this device.",
+    restoreDraft: "Restore draft",
+    discardDraft: "Discard",
+    draftError: "This browser could not read or save your private draft.",
   },
   es: {
     skip: "Ir al editor",
@@ -154,6 +159,11 @@ const messages = {
     aiError: "No se pudo completar el cambio con IA. Tu CV actual no cambió.",
     importExtraUse: "Este CV importado incluye una mejora adicional durante 24 horas.",
     finalPreview: "Vista final del CV",
+    draftTitle: "¿Continuar tu borrador?",
+    draftBody: "Hay un borrador privado de tu última sesión en este dispositivo.",
+    restoreDraft: "Restaurar borrador",
+    discardDraft: "Descartar",
+    draftError: "Este navegador no pudo leer o guardar tu borrador privado.",
   },
 } as const;
 

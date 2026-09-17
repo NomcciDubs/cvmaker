@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { CvmakerApi } from "./api/cvmaker";
 import { CvEditor } from "./components/CvEditor";
 import { SessionCard } from "./components/SessionCard";
@@ -15,6 +16,7 @@ export function App({ api }: AppProps) {
     navigator.languages,
   ));
   const messages = getMessages(locale);
+  const session = useQuery({ queryKey: ["session"], queryFn: api.getSession, retry: false });
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -46,7 +48,7 @@ export function App({ api }: AppProps) {
         </div>
         <SessionCard api={api} messages={messages} />
       </section>
-      <CvEditor api={api} locale={locale} messages={messages} />
+      <CvEditor api={api} locale={locale} messages={messages} userId={session.data?.user.id} />
       <footer><span>Nomcci CVMaker</span><span>Incremental frontend foundation · 2026</span></footer>
     </div>
   );
