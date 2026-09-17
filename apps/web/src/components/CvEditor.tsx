@@ -7,6 +7,7 @@ import { extractPdfText } from "../pdf-import";
 import { clearDraft, loadDraft, saveDraft, type CvDraftData } from "../draft-store";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
 import { CvLibrary } from "./CvLibrary";
+import { PdfArchives, PdfExportButton } from "./PdfArchives";
 import { PhotoManager } from "./PhotoManager";
 
 interface CvEditorProps {
@@ -434,12 +435,26 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
               <div className="save-row"><button type="button" disabled={!cvName.trim() || !state.html || saveCurrentCv.isPending} onClick={() => saveCurrentCv.mutate()}>{saveCurrentCv.isPending ? messages.savingCv : messages.saveCv}</button></div>
               {saveCurrentCv.isSuccess && <p className="success" role="status">{messages.cvSaved}</p>}
               {saveCurrentCv.isError && <p className="error" role="alert">{messages.saveCvError}</p>}
+              <PdfExportButton
+                api={api}
+                messages={messages}
+                userId={userId}
+                disabled={!state.html}
+                snapshot={{
+                  cv: state.cv,
+                  language: cvLanguage,
+                  template: state.choice.template,
+                  style: state.choice.style,
+                  name: cvName.trim() || undefined,
+                }}
+              />
             </form>
             <div className="final-preview preview-frame"><iframe title={messages.finalPreview} sandbox="" srcDoc={state.html} /></div>
           </div>
           <WizardActions onBack={() => dispatch({ type: "goTo", step: "preview" })} messages={messages} />
         </section>
       )}
+      {!pendingDraft && <PdfArchives api={api} messages={messages} locale={locale} userId={userId} />}
     </main>
   );
 }

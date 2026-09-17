@@ -114,6 +114,11 @@ h1 { max-width: 820px; margin: 0; font-size: clamp(3.2rem, 7vw, 7.3rem); line-he
 .save-row { display: flex; justify-content: flex-end; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .save-row button:disabled { opacity: .5; cursor: not-allowed; }
 .success { color: var(--green); font-size: .85rem; }
+.pdf-export { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.pdf-export button { border: 1px solid var(--ink); background: transparent; color: var(--ink); padding: .9rem 1.5rem; border-radius: 2px; font-weight: 600; cursor: pointer; }
+.pdf-export button:disabled { opacity: .5; cursor: wait; }
+.button-link { display: inline-block; border: 1px solid var(--ink); background: var(--ink); color: white; padding: .65rem .9rem; text-decoration: none; }
+.library-item-actions .button-link { font-size: .85rem; }
 .allowance-note { margin: 0 0 1.25rem; padding: .75rem 1rem; border-left: 3px solid var(--green); background: #edf0e7; color: #496057; font-size: .82rem; line-height: 1.5; }
 .final-preview { min-height: 560px; height: 680px; padding: 1rem; }
 .final-preview iframe { min-height: 520px; }

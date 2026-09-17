@@ -61,6 +61,19 @@ export interface SavedPhoto {
   deletedOldest: boolean;
 }
 
+export interface PdfArchiveItem {
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  createdAt: string;
+  downloadPath: string;
+}
+
+export interface ExportPdfResponse {
+  downloadPath: string;
+  reused?: boolean;
+}
+
 export interface Session {
   user: {
     id: string;
