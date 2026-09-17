@@ -20,7 +20,9 @@ export function App({ api }: AppProps) {
 
   useEffect(() => {
     document.documentElement.lang = locale;
-  }, [locale]);
+    document.title = messages.documentTitle;
+    document.querySelector('meta[name="description"]')?.setAttribute("content", messages.metaDescription);
+  }, [locale, messages]);
 
   function changeLocale(nextLocale: Locale) {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
@@ -32,7 +34,7 @@ export function App({ api }: AppProps) {
     <div className="app-shell">
       <a className="skip-link" href="#editor">{messages.skip}</a>
       <header className="topbar">
-        <a className="brand" href={`/${locale}/`} aria-label="Nomcci CVMaker home">
+        <a className="brand" href={`/${locale}/`} aria-label={messages.brandHome}>
           <span className="brand-mark">N</span><span>Nomcci <b>CVMaker</b></span>
         </a>
         <div className="language-switcher" aria-label={messages.language}>
@@ -49,7 +51,7 @@ export function App({ api }: AppProps) {
         <SessionCard api={api} messages={messages} />
       </section>
       <CvEditor api={api} locale={locale} messages={messages} userId={session.data?.user.id} userRole={session.data?.currentPage.role} />
-      <footer><span>Nomcci CVMaker</span><span>Incremental frontend foundation · 2026</span></footer>
+      <footer><span>Nomcci CVMaker</span><span>{messages.footerNote}</span></footer>
     </div>
   );
 }

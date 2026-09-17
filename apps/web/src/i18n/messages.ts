@@ -189,6 +189,11 @@ const messages = {
     languageName: "Language",
     level: "Level",
     addLanguage: "Add language",
+    signOut: "Log out",
+    brandHome: "Nomcci CVMaker home",
+    footerNote: "Incremental frontend foundation · 2026",
+    documentTitle: "Nomcci CVMaker — Shape the story. Keep the substance.",
+    metaDescription: "Create and preview a focused professional CV with Nomcci CVMaker.",
   },
   es: {
     skip: "Ir al editor",
@@ -378,6 +383,11 @@ const messages = {
     languageName: "Idioma",
     level: "Nivel",
     addLanguage: "Añadir idioma",
+    signOut: "Cerrar sesión",
+    brandHome: "Inicio de Nomcci CVMaker",
+    footerNote: "Base incremental del frontend · 2026",
+    documentTitle: "Nomcci CVMaker — Define la historia. Conserva la sustancia.",
+    metaDescription: "Crea y revisa un CV profesional enfocado con Nomcci CVMaker.",
   },
 } as const;
 

@@ -18,6 +18,10 @@ export function SessionCard({ api, messages }: SessionCardProps) {
     mutationFn: api.loginForDevelopment,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session"] }),
   });
+  const logout = useMutation({
+    mutationFn: api.logoutForDevelopment,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session"] }),
+  });
 
   return (
     <aside className="session-card" aria-labelledby="session-title">
@@ -34,6 +38,11 @@ export function SessionCard({ api, messages }: SessionCardProps) {
                 ? messages.unlimited
                 : `${Math.max(0, session.data.usage.limit - session.data.usage.used)}/${session.data.usage.limit}`}
             </small>
+            <div>
+              <button type="button" className="text-link" disabled={logout.isPending} onClick={() => logout.mutate()}>
+                {messages.signOut}
+              </button>
+            </div>
           </>
         )}
         {session.isError && (

@@ -5,6 +5,7 @@ import type { AdminMetrics, ApplicationRecord, ApplicationSnapshot, CvInputRecor
 export function createCvmakerApi(client: ApiClient) {
   return {
     loginForDevelopment: () => client.post<{ authenticated: boolean }, Record<string, never>>("/api/dev/login", {}),
+    logoutForDevelopment: () => client.post<{ authenticated: boolean }, Record<string, never>>("/api/dev/logout", {}),
     getSession: () => client.get<Session>("/api/me"),
     renderCv: (body: RenderCvRequest) => client.post<{ html: string }, RenderCvRequest>("/api/cv/render", body),
     importCv: (body: ImportCvRequest) => client.post<ImportCvResponse, ImportCvRequest>("/api/cv/import", body),
