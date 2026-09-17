@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
-        "/api": environment.VITE_API_PROXY_TARGET || "http://127.0.0.1:3001",
+        "/api": environment.VITE_API_PROXY_TARGET || "http://127.0.0.1:3000",
       },
     },
     test: {
