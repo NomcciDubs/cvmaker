@@ -15,7 +15,7 @@ export interface ApiClient {
 }
 
 export function createApiClient(apiBase = ""): ApiClient {
-  const base = normalizeSameOriginBase(apiBase);
+  const base = normalizeApiBase(apiBase);
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${base}${path}`, {
@@ -36,11 +36,23 @@ export function createApiClient(apiBase = ""): ApiClient {
   };
 }
 
-function normalizeSameOriginBase(value: string): string {
+function normalizeApiBase(value: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "/") return "";
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
-    throw new Error("VITE_API_BASE must be a same-origin path");
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed.replace(/\/$/, "");
+  const absolute = parseAbsoluteApiBase(trimmed);
+  if (absolute) return absolute;
+  throw new Error("VITE_API_BASE must be a same-origin path or an absolute http(s) URL");
+}
+
+function parseAbsoluteApiBase(value: string): string | null {
+  if (!/^https?:\/\//i.test(value)) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
   }
-  return trimmed.replace(/\/$/, "");
+  if (url.username || url.password || url.search || url.hash) return null;
+  return `${url.protocol}//${url.host}${url.pathname.replace(/\/$/, "")}`;
 }
