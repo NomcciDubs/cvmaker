@@ -1,29 +1,7 @@
-export type Locale = "en" | "es";
-export type CvStyle = "modern" | "minimal" | "classic" | "executive" | "sidebar_compact" | "sidebar_green";
-export type CvTemplate = "cv_base" | "cv_sidebar";
+import type { CvData, CvStyle, CvTemplate, Language } from "@nomcci/cvmaker-domain";
 
-export interface CvData {
-  personal_info: {
-    full_name: string;
-    title: string;
-    email: string;
-    phone: string;
-    location: string;
-    links: Array<{ label: string; url: string }>;
-  };
-  summary: string;
-  experience: Array<{
-    role: string;
-    company: string;
-    location: string;
-    start_date: string;
-    end_date: string;
-    description: string[];
-  }>;
-  education: Array<unknown>;
-  skills: Array<unknown>;
-  languages: Array<unknown>;
-}
+export type { CvData, CvStyle, CvTemplate } from "@nomcci/cvmaker-domain";
+export type Locale = Language;
 
 export interface RenderCvRequest {
   cv: CvData;
