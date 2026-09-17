@@ -1,3 +1,4 @@
+import { CV_STYLES, CV_TEMPLATES } from "@nomcci/cvmaker-domain";
 import type { CvData, CvStyle, CvTemplate, Locale } from "./types";
 import type { WizardStep } from "./wizard";
 
@@ -15,6 +16,7 @@ export interface CvDraftData {
   cvLanguage: Locale;
   sourceInput: string;
   importName: string;
+  cvName: string;
   importWorkflowId: string | null;
   importedOriginalCv: CvData | null;
   targetRole: string;
@@ -39,8 +41,8 @@ export function loadDraft(storage: Storage, userId: string): CvDraftData | null 
   if (!serialized) return null;
   try {
     const envelope = JSON.parse(serialized) as Partial<DraftEnvelope>;
-    if (envelope.version !== 2 || envelope.userId !== userId || !isDraftData(envelope.data)) return null;
-    return envelope.data;
+    if (envelope.version !== 2 || envelope.userId !== userId) return null;
+    return normalizeDraftData(envelope.data);
   } catch {
     return null;
   }
@@ -55,23 +57,47 @@ export function clearDraft(storage: Storage, userId: string): void {
   storage.removeItem(draftKey(userId));
 }
 
-function isDraftData(value: unknown): value is CvDraftData {
-  if (!value || typeof value !== "object") return false;
-  const draft = value as Partial<CvDraftData>;
-  return (
-    ["template", "source", "preview", "improve"].includes(draft.step ?? "")
-    && typeof draft.maxStep === "number"
-    && (draft.sourceMode === "manual" || draft.sourceMode === "import")
-    && Boolean(draft.cv && typeof draft.cv === "object" && draft.cv.personal_info && typeof draft.cv.personal_info.full_name === "string")
-    && typeof draft.html === "string"
-    && typeof draft.template === "string"
-    && typeof draft.style === "string"
-    && (draft.cvLanguage === "en" || draft.cvLanguage === "es")
-    && typeof draft.sourceInput === "string"
-    && typeof draft.importName === "string"
-    && typeof draft.targetRole === "string"
-    && typeof draft.jobDescription === "string"
-    && typeof draft.instruction === "string"
-    && typeof draft.updatedAt === "string"
-  );
+function normalizeDraftData(value: unknown): CvDraftData | null {
+  if (!value || typeof value !== "object") return null;
+  const draft = value as Partial<CvDraftData> & {
+    step?: WizardStep | number;
+    improvement?: { targetRole?: unknown; jobDescription?: unknown; instruction?: unknown };
+  };
+  const step = typeof draft.step === "number"
+    ? (["template", "source", "preview", "improve"] as const)[draft.step - 1]
+    : draft.step;
+  if (
+    !step
+    || typeof draft.maxStep !== "number"
+    || (draft.sourceMode !== "manual" && draft.sourceMode !== "import")
+    || !draft.cv || typeof draft.cv !== "object"
+    || !draft.cv.personal_info || typeof draft.cv.personal_info.full_name !== "string"
+    || !CV_TEMPLATES.includes(draft.template as CvTemplate)
+    || !CV_STYLES.includes(draft.style as CvStyle)
+    || (draft.cvLanguage !== "en" && draft.cvLanguage !== "es")
+  ) return null;
+
+  return {
+    step,
+    maxStep: draft.maxStep,
+    sourceMode: draft.sourceMode,
+    cv: draft.cv,
+    html: typeof draft.html === "string" ? draft.html : "",
+    template: draft.template as CvTemplate,
+    style: draft.style as CvStyle,
+    cvLanguage: draft.cvLanguage,
+    sourceInput: typeof draft.sourceInput === "string" ? draft.sourceInput : "",
+    importName: typeof draft.importName === "string" ? draft.importName : "",
+    cvName: typeof draft.cvName === "string" ? draft.cvName : "",
+    importWorkflowId: typeof draft.importWorkflowId === "string" ? draft.importWorkflowId : null,
+    importedOriginalCv: draft.importedOriginalCv && typeof draft.importedOriginalCv === "object" ? draft.importedOriginalCv : null,
+    targetRole: stringValue(draft.targetRole ?? draft.improvement?.targetRole),
+    jobDescription: stringValue(draft.jobDescription ?? draft.improvement?.jobDescription),
+    instruction: stringValue(draft.instruction ?? draft.improvement?.instruction),
+    updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : new Date(0).toISOString(),
+  };
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }

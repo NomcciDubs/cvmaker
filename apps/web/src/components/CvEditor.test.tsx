@@ -122,6 +122,7 @@ describe("CvEditor", () => {
       cvLanguage: "en",
       sourceInput: "",
       importName: "",
+      cvName: "Draft CV",
       importWorkflowId: null,
       importedOriginalCv: null,
       targetRole: "",
@@ -129,7 +130,13 @@ describe("CvEditor", () => {
       instruction: "",
       updatedAt: "2026-09-16T00:00:00.000Z",
     });
-    const api = { renderCv: vi.fn(), getSession: vi.fn() } as unknown as CvmakerApi;
+    const api = {
+      renderCv: vi.fn(),
+      getSession: vi.fn(),
+      listCvInputs: vi.fn().mockResolvedValue({ inputs: [] }),
+      listCvs: vi.fn().mockResolvedValue({ cvs: [] }),
+      deleteCv: vi.fn(),
+    } as unknown as CvmakerApi;
     const queryClient = new QueryClient();
 
     render(
@@ -141,5 +148,34 @@ describe("CvEditor", () => {
     await user.click(await screen.findByRole("button", { name: "Restore draft" }));
     expect(screen.getByLabelText("Full name")).toHaveValue("Draft Owner");
     expect(screen.getByRole("button", { name: /Source/ })).toHaveAttribute("aria-current", "step");
+  });
+
+  it("saves the current rendered output to the private CV library", async () => {
+    const user = userEvent.setup();
+    const renderCv = vi.fn().mockResolvedValue({ html: "<article>Ada</article>" });
+    const saveCv = vi.fn().mockImplementation(async (body) => ({
+      cv: { ...body, id: "cv-1", ownerId: "user-a", createdAt: "now", updatedAt: "now" },
+    }));
+    const api = { renderCv, saveCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+
+    render(<QueryClientProvider client={queryClient}>
+      <CvEditor api={api} locale="en" messages={getMessages("en")} />
+    </QueryClientProvider>);
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.type(screen.getByLabelText("Full name"), "Ada Lovelace");
+    await user.click(screen.getByRole("button", { name: "Render preview" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.type(screen.getByLabelText("CV name"), "Ada Engineering CV");
+    await user.click(screen.getByRole("button", { name: "Save CV" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("CV saved");
+    expect(saveCv).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Ada Engineering CV",
+      sourceType: "output",
+      html: "<article>Ada</article>",
+      language: "en",
+    }));
   });
 });

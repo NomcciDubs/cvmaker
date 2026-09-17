@@ -39,6 +39,7 @@ export type WizardAction =
   | { type: "aiApplied"; cv: CvData; html: string; consumedImportWorkflow: boolean }
   | { type: "undoAi"; html: string }
   | { type: "restoreDraft"; draft: CvDraftData }
+  | { type: "loadSavedCv"; cv: CvData; html: string; template: CvTemplate; style: CvStyle }
   | { type: "goTo"; step: WizardStep }
   | { type: "rendered"; html: string };
 
@@ -73,6 +74,22 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       previewStale: false,
       importWorkflowId: action.draft.importWorkflowId,
       importedOriginalCv: action.draft.importedOriginalCv,
+      previousCv: null,
+    };
+  }
+  if (action.type === "loadSavedCv") {
+    const choice = TEMPLATE_CHOICES.find(({ template, style }) => template === action.template && style === action.style);
+    if (!choice) return state;
+    return {
+      ...state,
+      step: "improve",
+      maxStep: 3,
+      choice,
+      cv: action.cv,
+      html: action.html,
+      previewStale: false,
+      importWorkflowId: null,
+      importedOriginalCv: null,
       previousCv: null,
     };
   }

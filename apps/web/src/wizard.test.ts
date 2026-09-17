@@ -54,4 +54,20 @@ describe("wizardReducer", () => {
     expect(state.previousCv).toBeNull();
     expect(state.html).toBe("<p>Original</p>");
   });
+
+  it("opens a saved CV directly in the final editing step", () => {
+    const state = wizardReducer(createWizardState(), {
+      type: "loadSavedCv",
+      cv: { personal_info: { full_name: "Saved owner" } },
+      html: "<article>Saved</article>",
+      template: "cv_base",
+      style: "executive",
+    });
+
+    expect(state.step).toBe("improve");
+    expect(state.maxStep).toBe(3);
+    expect(state.choice.style).toBe("executive");
+    expect(state.cv.personal_info.full_name).toBe("Saved owner");
+    expect(state.html).toBe("<article>Saved</article>");
+  });
 });

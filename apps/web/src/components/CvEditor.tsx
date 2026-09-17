@@ -1,11 +1,12 @@
 import { useEffect, useReducer, useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CvmakerApi } from "../api/cvmaker";
 import type { Messages } from "../i18n/messages";
-import type { CvData, CvStyle, Locale, RenderCvRequest } from "../types";
+import type { CvData, CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRecord } from "../types";
 import { extractPdfText } from "../pdf-import";
 import { clearDraft, loadDraft, saveDraft, type CvDraftData } from "../draft-store";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
+import { CvLibrary } from "./CvLibrary";
 
 interface CvEditorProps {
   api: CvmakerApi;
@@ -17,6 +18,7 @@ interface CvEditorProps {
 const blankExperience = { role: "", company: "", location: "", start_date: "", end_date: "", description: [] as string[] };
 
 export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
+  const queryClient = useQueryClient();
   const [state, dispatch] = useReducer(wizardReducer, undefined, createWizardState);
   const [highlights, setHighlights] = useState("");
   const [sourceMode, setSourceMode] = useState<"manual" | "import">("manual");
@@ -27,6 +29,9 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
   const [targetRole, setTargetRole] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [instruction, setInstruction] = useState("");
+  const [cvLanguage, setCvLanguage] = useState<Locale>(locale);
+  const [cvName, setCvName] = useState("");
+  const [savedCvId, setSavedCvId] = useState<string | null>(null);
   const [pendingDraft, setPendingDraft] = useState<CvDraftData | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [draftError, setDraftError] = useState(false);
@@ -60,10 +65,13 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
     setTargetRole("");
     setJobDescription("");
     setInstruction("");
+    setCvLanguage(locale);
+    setCvName("");
+    setSavedCvId(null);
   }
 
   useEffect(() => {
-    if (!userId || draftUserId !== userId || !draftReady || pendingDraft) return;
+    if (!userId || draftUserId !== userId || !draftReady || pendingDraft || savedCvId) return;
     const hasContent = state.step !== "template" || Boolean(state.cv.personal_info.full_name || state.cv.summary || importText);
     if (!hasContent) return;
     try {
@@ -75,9 +83,10 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
         html: state.html,
         template: state.choice.template,
         style: state.choice.style,
-        cvLanguage: locale,
+        cvLanguage,
         sourceInput: importText,
         importName,
+        cvName,
         importWorkflowId: state.importWorkflowId,
         importedOriginalCv: state.importedOriginalCv,
         targetRole,
@@ -89,7 +98,7 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
     } catch {
       setDraftError(true);
     }
-  }, [draftReady, draftUserId, importName, importText, instruction, jobDescription, locale, pendingDraft, sourceMode, state, targetRole, userId]);
+  }, [cvLanguage, cvName, draftReady, draftUserId, importName, importText, instruction, jobDescription, pendingDraft, savedCvId, sourceMode, state, targetRole, userId]);
 
   function restorePendingDraft() {
     if (!pendingDraft) return;
@@ -97,9 +106,11 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
     setSourceMode(pendingDraft.sourceMode);
     setImportText(pendingDraft.sourceInput);
     setImportName(pendingDraft.importName);
+    setCvName(pendingDraft.cvName);
     setTargetRole(pendingDraft.targetRole);
     setJobDescription(pendingDraft.jobDescription);
     setInstruction(pendingDraft.instruction);
+    setCvLanguage(pendingDraft.cvLanguage);
     setPendingDraft(null);
     setDraftReady(true);
   }
@@ -121,10 +132,10 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
   const importCv = useMutation({
     mutationFn: async ({ description, name }: { description: string; name?: string }) => {
       await api.saveCvInput({ content: description, name });
-      const imported = await api.importCv({ description, language: locale });
+      const imported = await api.importCv({ description, language: cvLanguage });
       const preview = await api.renderCv({
         cv: imported.cv,
-        language: locale,
+        language: cvLanguage,
         template: state.choice.template,
         style: state.choice.style,
       });
@@ -133,6 +144,7 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
     onSuccess: (result) => {
       dispatch({ type: "imported", cv: result.cv, importWorkflowId: result.importWorkflowId });
       dispatch({ type: "rendered", html: result.html });
+      void queryClient.invalidateQueries({ queryKey: ["cv-inputs", userId] });
     },
   });
   const applyAi = useMutation({
@@ -150,15 +162,15 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
           targetRole: targetRole.trim() || undefined,
           instruction: combinedInstruction,
           jobDescription: jobDescription.trim() || undefined,
-          language: locale,
+          language: cvLanguage,
         })
         : await api.modifyCv({
           cv: state.cv,
           instruction: combinedInstruction,
           jobDescription: jobDescription.trim() || undefined,
-          language: locale,
+          language: cvLanguage,
         });
-      const preview = await api.renderCv({ cv: result.cv, language: locale, template: state.choice.template, style: state.choice.style });
+      const preview = await api.renderCv({ cv: result.cv, language: cvLanguage, template: state.choice.template, style: state.choice.style });
       return { cv: result.cv, html: preview.html, consumedImportWorkflow };
     },
     onSuccess: (result) => dispatch({ type: "aiApplied", ...result }),
@@ -166,11 +178,56 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
   const undoAi = useMutation({
     mutationFn: async () => {
       if (!state.previousCv) throw new Error("No AI result to undo");
-      const preview = await api.renderCv({ cv: state.previousCv, language: locale, template: state.choice.template, style: state.choice.style });
+      const preview = await api.renderCv({ cv: state.previousCv, language: cvLanguage, template: state.choice.template, style: state.choice.style });
       return preview.html;
     },
     onSuccess: (html) => dispatch({ type: "undoAi", html }),
   });
+  const saveCurrentCv = useMutation({
+    mutationFn: () => api.saveCv({
+      id: savedCvId ?? undefined,
+      name: cvName.trim(),
+      sourceType: savedCvId ? "edit" : state.importedOriginalCv ? "import" : "output",
+      sourceInput: importText.trim() || undefined,
+      targetRole: targetRole.trim() || undefined,
+      cv: state.cv,
+      html: state.html,
+      language: cvLanguage,
+      template: state.choice.template,
+      style: state.choice.style,
+    }),
+    onSuccess: async ({ cv }) => {
+      setSavedCvId(cv.id);
+      try {
+        if (userId) clearDraft(window.localStorage, userId);
+        setDraftError(false);
+      } catch {
+        setDraftError(true);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["cvs", userId] });
+    },
+  });
+
+  function useSavedInput(input: CvInputRecord) {
+    setSourceMode("import");
+    setImportText(input.content);
+    setImportName(input.name);
+    setCvName(input.name);
+    setSavedCvId(null);
+    dispatch({ type: "goTo", step: "source" });
+  }
+
+  function useSavedCv(record: SavedCvRecord) {
+    dispatch({ type: "loadSavedCv", cv: record.cv, html: record.html, template: record.template, style: record.style });
+    setCvName(record.name);
+    setSavedCvId(record.id);
+    setCvLanguage(record.language);
+    setImportText(record.sourceInput ?? "");
+    setTargetRole(record.targetRole ?? "");
+    setJobDescription("");
+    setInstruction("");
+    setHighlights(record.cv.experience?.[0]?.description?.join("\n") ?? "");
+  }
 
   async function selectPdf(file: File | undefined) {
     if (!file) return;
@@ -215,7 +272,7 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
     dispatch({ type: "updateCv", cv: preparedCv });
     render.mutate({
       cv: preparedCv,
-      language: locale,
+      language: cvLanguage,
       template: state.choice.template,
       style: state.choice.style,
     });
@@ -228,6 +285,7 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
         <div><button type="button" className="secondary" onClick={discardPendingDraft}>{messages.discardDraft}</button><button type="button" onClick={restorePendingDraft}>{messages.restoreDraft}</button></div>
       </aside>}
       {draftError && <p className="error draft-error" role="alert">{messages.draftError}</p>}
+      {!pendingDraft && <CvLibrary api={api} locale={locale} messages={messages} userId={userId} onUseInput={useSavedInput} onUseCv={useSavedCv} />}
       <nav className="wizard-steps" aria-label={messages.wizardProgress}>
         {WIZARD_STEPS.map((step, index) => (
           <button
@@ -343,6 +401,8 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
               if (targetRole.trim() || instruction.trim()) applyAi.mutate();
             }}>
               {state.importWorkflowId && <p className="allowance-note">{messages.importExtraUse}</p>}
+              <Field label={messages.cvName} value={cvName} onChange={setCvName} />
+              <label>{messages.cvLanguage}<select value={cvLanguage} onChange={(event) => setCvLanguage(event.target.value as Locale)}><option value="en">English</option><option value="es">Español</option></select></label>
               <Field label={messages.targetRole} value={targetRole} onChange={setTargetRole} />
               <label>{messages.jobDescription}<textarea rows={6} value={jobDescription} onChange={(event) => setJobDescription(event.target.value)} /></label>
               <label>{messages.instruction}<textarea rows={4} value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
@@ -351,6 +411,9 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
                 <button type="submit" disabled={(!targetRole.trim() && !instruction.trim()) || applyAi.isPending}>{applyAi.isPending ? messages.applyingAi : messages.applyAll}</button>
               </div>
               {(applyAi.isError || undoAi.isError) && <p className="error" role="alert">{messages.aiError}</p>}
+              <div className="save-row"><button type="button" disabled={!cvName.trim() || !state.html || saveCurrentCv.isPending} onClick={() => saveCurrentCv.mutate()}>{saveCurrentCv.isPending ? messages.savingCv : messages.saveCv}</button></div>
+              {saveCurrentCv.isSuccess && <p className="success" role="status">{messages.cvSaved}</p>}
+              {saveCurrentCv.isError && <p className="error" role="alert">{messages.saveCvError}</p>}
             </form>
             <div className="final-preview preview-frame"><iframe title={messages.finalPreview} sandbox="" srcDoc={state.html} /></div>
           </div>

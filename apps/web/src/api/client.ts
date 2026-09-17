@@ -11,6 +11,7 @@ export class ApiError extends Error {
 export interface ApiClient {
   get<T>(path: string): Promise<T>;
   post<TResponse, TBody>(path: string, body: TBody): Promise<TResponse>;
+  delete(path: string): Promise<void>;
 }
 
 export function createApiClient(apiBase = ""): ApiClient {
@@ -31,6 +32,7 @@ export function createApiClient(apiBase = ""): ApiClient {
     get: <T>(path: string) => request<T>(path, { cache: "no-store" }),
     post: <TResponse, TBody>(path: string, body: TBody) =>
       request<TResponse>(path, { method: "POST", body: JSON.stringify(body) }),
+    delete: (path: string) => request<void>(path, { method: "DELETE" }),
   };
 }
 

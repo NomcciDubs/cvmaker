@@ -13,6 +13,7 @@ const draft: CvDraftData = {
   cvLanguage: "en",
   sourceInput: "Ada's CV",
   importName: "ada",
+  cvName: "Ada CV",
   importWorkflowId: null,
   importedOriginalCv: null,
   targetRole: "Engineer",
@@ -38,6 +39,30 @@ describe("draft store", () => {
     expect(loadDraft(localStorage, "user-a")).toBeNull();
     localStorage.setItem(draftKey("user-a"), JSON.stringify({ version: 2, userId: "user-b", data: draft }));
     expect(loadDraft(localStorage, "user-a")).toBeNull();
+  });
+
+  it("normalizes the legacy version 2 numeric step and improvement object", () => {
+    localStorage.setItem(draftKey("user-a"), JSON.stringify({
+      version: 2,
+      userId: "user-a",
+      data: {
+        ...draft,
+        step: 4,
+        importName: undefined,
+        targetRole: undefined,
+        jobDescription: undefined,
+        instruction: undefined,
+        improvement: { targetRole: "Architect", jobDescription: "Distributed systems", instruction: "Be concise" },
+      },
+    }));
+
+    expect(loadDraft(localStorage, "user-a")).toEqual(expect.objectContaining({
+      step: "improve",
+      importName: "",
+      targetRole: "Architect",
+      jobDescription: "Distributed systems",
+      instruction: "Be concise",
+    }));
   });
 
   it("clears only the current user's draft", () => {

@@ -1,4 +1,4 @@
-import type { CvData, CvStyle, CvTemplate, Language } from "@nomcci/cvmaker-domain";
+import type { CvData, CvSourceType, CvStyle, CvTemplate, Language, SavedCvInput } from "@nomcci/cvmaker-domain";
 
 export type { CvData, CvStyle, CvTemplate } from "@nomcci/cvmaker-domain";
 export type Locale = Language;
@@ -31,6 +31,22 @@ export interface ImportImproveRequest extends ModifyCvRequest {
   originalCv: CvData;
   importWorkflowId: string;
   targetRole?: string;
+}
+
+export interface CvInputRecord {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedCvRecord extends SavedCvInput {
+  id: string;
+  ownerId: string;
+  sourceType: CvSourceType;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Session {
