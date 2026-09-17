@@ -49,6 +49,18 @@ export interface SavedCvRecord extends SavedCvInput {
   updatedAt: string;
 }
 
+export interface PhotoRecord {
+  id: string;
+  name: string;
+  dataUrl: string;
+  createdAt: string;
+}
+
+export interface SavedPhoto {
+  id: string;
+  deletedOldest: boolean;
+}
+
 export interface Session {
   user: {
     id: string;

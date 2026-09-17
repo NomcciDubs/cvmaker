@@ -7,6 +7,7 @@ import { extractPdfText } from "../pdf-import";
 import { clearDraft, loadDraft, saveDraft, type CvDraftData } from "../draft-store";
 import { createWizardState, TEMPLATE_CHOICES, WIZARD_STEPS, wizardReducer, type WizardStep } from "../wizard";
 import { CvLibrary } from "./CvLibrary";
+import { PhotoManager } from "./PhotoManager";
 
 interface CvEditorProps {
   api: CvmakerApi;
@@ -257,6 +258,17 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
     });
   }
 
+  function selectPhoto(dataUrl: string | undefined) {
+    const { photo_url: _removed, ...rest } = state.cv.personal_info;
+    dispatch({
+      type: "updateCv",
+      cv: {
+        ...state.cv,
+        personal_info: dataUrl ? { ...rest, photo_url: dataUrl } : rest,
+      },
+    });
+  }
+
   function updateExperience(field: "role" | "company", value: string) {
     const experience = state.cv.experience?.[0] ?? blankExperience;
     dispatch({ type: "updateCv", cv: { ...state.cv, experience: [{ ...experience, [field]: value }] } });
@@ -406,6 +418,14 @@ export function CvEditor({ api, locale, messages, userId }: CvEditorProps) {
               <Field label={messages.targetRole} value={targetRole} onChange={setTargetRole} />
               <label>{messages.jobDescription}<textarea rows={6} value={jobDescription} onChange={(event) => setJobDescription(event.target.value)} /></label>
               <label>{messages.instruction}<textarea rows={4} value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
+              <PhotoManager
+                api={api}
+                messages={messages}
+                userId={userId}
+                selectedPhotoUrl={state.cv.personal_info.photo_url}
+                onSelect={selectPhoto}
+              />
+              <p className="photo-note">{messages.photoSidebarNote}</p>
               <div className="wizard-actions improve-actions">
                 <button className="secondary" type="button" onClick={() => undoAi.mutate()} disabled={!state.previousCv || undoAi.isPending}>{messages.undoAi}</button>
                 <button type="submit" disabled={(!targetRole.trim() && !instruction.trim()) || applyAi.isPending}>{applyAi.isPending ? messages.applyingAi : messages.applyAll}</button>

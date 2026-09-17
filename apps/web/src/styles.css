@@ -57,6 +57,24 @@ h1 { max-width: 820px; margin: 0; font-size: clamp(3.2rem, 7vw, 7.3rem); line-he
 .library-item-actions { display: flex; gap: .4rem; flex: 0 0 auto; }
 .library-item button.danger { border-color: #8c2929; background: transparent; color: #8c2929; }
 .empty-library { color: #66736d; text-align: center; }
+.photo-manager { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.photo-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.photo-heading h3 { margin: 0; font: 500 1.3rem/1.2 Georgia, serif; }
+.photo-heading small { color: #66736d; }
+.photo-hint { margin: .4rem 0 1rem; color: #66736d; font-size: .8rem; }
+.photo-drop { display: grid; place-items: center; gap: .4rem; min-height: 110px; padding: 1rem; border: 1px dashed var(--green); background: #edf0e7; text-align: center; cursor: pointer; }
+.photo-drop span { color: var(--ink); font-weight: 600; }
+.photo-drop input { width: auto; border: 0; box-shadow: none; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem; margin-top: 1rem; }
+.photo-item { display: grid; gap: .4rem; justify-items: center; padding: .75rem; border: 1px solid var(--line); background: #f8f6ef; text-align: center; }
+.photo-item.selected { border-color: var(--ink); box-shadow: 4px 4px 0 var(--lime); }
+.photo-item img { width: 96px; height: 96px; object-fit: cover; border: 1px solid var(--line); background: white; }
+.photo-item strong { font-size: .75rem; overflow-wrap: anywhere; }
+.photo-item small { color: var(--green); font-size: .72rem; }
+.photo-item-actions { display: flex; gap: .4rem; }
+.photo-item-actions button { border: 1px solid var(--ink); padding: .45rem .6rem; background: var(--ink); color: white; cursor: pointer; font-size: .75rem; }
+.photo-item-actions button.danger { border-color: #8c2929; background: transparent; color: #8c2929; }
+.photo-note { margin: .75rem 0 0; color: #66736d; font-size: .78rem; }
 .wizard-steps { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--ink); border-bottom: 0; background: var(--paper); }
 .wizard-steps button { display: flex; align-items: center; gap: .65rem; min-height: 62px; padding: .8rem 1rem; border: 0; border-right: 1px solid var(--line); background: transparent; color: #66736d; cursor: pointer; text-align: left; }
 .wizard-steps button:last-child { border-right: 0; }

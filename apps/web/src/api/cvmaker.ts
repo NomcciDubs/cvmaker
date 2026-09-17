@@ -1,6 +1,6 @@
 import type { ApiClient } from "./client";
 import type { SavedCvInput } from "@nomcci/cvmaker-domain";
-import type { CvInputRecord, ImportCvRequest, ImportCvResponse, ImportImproveRequest, ModifyCvRequest, RenderCvRequest, SavedCvRecord, Session } from "../types";
+import type { CvInputRecord, ImportCvRequest, ImportCvResponse, ImportImproveRequest, ModifyCvRequest, PhotoRecord, RenderCvRequest, SavedCvRecord, SavedPhoto, Session } from "../types";
 
 export function createCvmakerApi(client: ApiClient) {
   return {
@@ -17,6 +17,10 @@ export function createCvmakerApi(client: ApiClient) {
     listCvs: () => client.get<{ cvs: SavedCvRecord[] }>("/api/cvs"),
     saveCv: (body: SavedCvInput) => client.post<{ cv: SavedCvRecord }, SavedCvInput>("/api/cvs", body),
     deleteCv: (id: string) => client.delete(`/api/cvs/${encodeURIComponent(id)}`),
+    listPhotos: () => client.get<{ photos: PhotoRecord[] }>("/api/photos"),
+    uploadPhoto: (body: { name?: string; dataUrl: string }) =>
+      client.post<SavedPhoto, { name?: string; dataUrl: string }>("/api/photos", body),
+    deletePhoto: (id: string) => client.delete(`/api/photos/${encodeURIComponent(id)}`),
   };
 }
 
