@@ -33,6 +33,29 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/proxy/api/me", expect.objectContaining({ credentials: "include" }));
   });
 
+  it("aborts hung requests instead of waiting forever", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_url: string, init?: RequestInit) =>
+            new Promise((_, reject) => {
+              init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+            }),
+        ),
+      );
+      const client = createApiClient("");
+
+      const pending = client.get("/api/me");
+      const assertion = expect(pending).rejects.toMatchObject({ name: "ApiError", status: 0 });
+      await vi.advanceTimersByTimeAsync(20_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects non-http bases", () => {
     expect(() => createApiClient("ftp://example.com")).toThrow("VITE_API_BASE");
     expect(() => createApiClient("//example.com/api")).toThrow("VITE_API_BASE");

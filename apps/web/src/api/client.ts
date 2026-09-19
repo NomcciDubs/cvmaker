@@ -14,18 +14,33 @@ export interface ApiClient {
   delete(path: string): Promise<void>;
 }
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
 export function createApiClient(apiBase = ""): ApiClient {
   const base = normalizeApiBase(apiBase);
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${base}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
-    });
-    const data = (await response.json().catch(() => ({}))) as { error?: string };
-    if (!response.ok) throw new ApiError(data.error ?? `Request failed (${response.status})`, response.status);
-    return data as T;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${base}${path}`, {
+        ...init,
+        credentials: "include",
+        signal: controller.signal,
+        headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new ApiError(data.error ?? `Request failed (${response.status})`, response.status);
+      return data as T;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ApiError("Request timed out", 0);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   return {

@@ -13,6 +13,8 @@ import type { Locale } from "./types";
 
 interface AppProps { api: CvmakerApi }
 
+const STATUS_PAGE_URL = import.meta.env.VITE_STATUS_URL || "https://status.nomcci.top";
+
 export function App({ api }: AppProps) {
   const [locale, setLocale] = useState<Locale>(() => resolveLocale(
     window.location.pathname,
@@ -71,6 +73,26 @@ export function App({ api }: AppProps) {
   }, []);
 
   if (session.isPending || unauthenticated) return <Splash label={messages.loading} />;
+
+  if (session.isError) {
+    return (
+      <div className="app-shell">
+        <div className="boot-error" role="alert">
+          <span className="boot-error-mark" aria-hidden="true"><NomcciMark size={26} /></span>
+          <h1>{messages.sessionErrorTitle}</h1>
+          <p>{messages.sessionErrorBody}</p>
+          <div className="boot-error-actions">
+            <button type="button" className="btn btn-primary" onClick={() => { void session.refetch(); }}>
+              {messages.retry}
+            </button>
+            <a className="btn btn-secondary" href={STATUS_PAGE_URL} target="_blank" rel="noopener noreferrer">
+              {messages.viewStatus}
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   function changeLocale(nextLocale: Locale) {
     persistLocale(nextLocale);
