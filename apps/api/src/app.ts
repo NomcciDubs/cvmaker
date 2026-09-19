@@ -407,7 +407,13 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
 
   app.notFound((context) => context.json({ error: "not_found" }, 404));
-  app.onError((_error, context) => context.json({ error: "internal_error" }, 500));
+  app.onError((error, context) => {
+    console.error(
+      `API ${context.req.method} ${context.req.path} failed:`,
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
+    return context.json({ error: "internal_error" }, 500);
+  });
 
   return app;
 }

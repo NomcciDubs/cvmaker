@@ -179,6 +179,28 @@ describe("API boundaries", () => {
     expect(render).toHaveBeenCalledTimes(12);
   });
 
+  it("logs unexpected failures as JSON internal errors", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const render = vi.fn(() => { throw new Error("boom"); });
+      const { app } = fixture({ renderer: { render } });
+      const response = await app.request("/api/cv/render", {
+        method: "POST",
+        headers: { authorization: "Bearer valid", "content-type": "application/json" },
+        body: JSON.stringify(validRenderRequest),
+      });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "internal_error" });
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("POST /api/cv/render"),
+        expect.stringContaining("boom"),
+      );
+      expect(render).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("renders through the injected renderer", async () => {
     const render = vi.fn(() => "<html>portable</html>");
     const { app } = fixture({ renderer: { render } });
