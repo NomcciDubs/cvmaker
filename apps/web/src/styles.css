@@ -1104,7 +1104,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .tracker-form .wizard-actions { margin-top: .75rem; }
 
 /* ---------- Notices ---------- */
-.notice, .error, .success { border-radius: var(--r-md); padding: .7rem 1rem; font-size: .85rem; margin: .75rem 0 0; }
+.notice, .error, .success { border-radius: var(--r-md); padding: .7rem 1rem; font-size: .85rem; margin: .75rem 0; }
 .notice { border-left: 3px solid var(--warn); background: var(--warn-soft); color: var(--ink); }
 .error { border-left: 3px solid var(--danger); background: var(--danger-soft); color: var(--danger); }
 .success { border-left: 3px solid var(--success); background: transparent; background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
