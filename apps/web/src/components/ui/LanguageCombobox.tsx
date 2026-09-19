@@ -26,8 +26,12 @@ export function filterLanguages(query: string, locale: UiLocale): CvLanguageInfo
   });
 }
 
-export function languageDisplayName(entry: CvLanguageInfo, locale: UiLocale): string {
-  return locale === "es" ? entry.nameEs : entry.nameEn;
+function showNativeName(entry: CvLanguageInfo): boolean {
+  return entry.nameEn.toLowerCase() !== entry.nameNative.toLowerCase();
+}
+
+function selectedPlaceholder(entry: CvLanguageInfo): string {
+  return showNativeName(entry) ? `${entry.nameEn} · ${entry.nameNative}` : entry.nameEn;
 }
 
 interface LanguageComboboxProps {
@@ -154,7 +158,7 @@ export function LanguageCombobox({
           aria-labelledby={labelId}
           autoComplete="off"
           spellCheck={false}
-          placeholder={`${languageDisplayName(selected, locale)} · ${selected.nameNative}`}
+          placeholder={selectedPlaceholder(selected)}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -197,8 +201,8 @@ export function LanguageCombobox({
                 onMouseEnter={() => setActiveCode(entry.code)}
               >
                 <span className="combobox-option-names">
-                  <strong>{languageDisplayName(entry, locale)}</strong>
-                  <span>{entry.nameNative}</span>
+                  <strong>{entry.nameEn}</strong>
+                  {showNativeName(entry) && <span>{entry.nameNative}</span>}
                 </span>
                 {isSelected && <Icon name="check" size={15} aria-hidden="true" />}
               </li>
