@@ -81,6 +81,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database/mysql/0001_initial.sql:/docker-entrypoint-initdb.d/0001_initial.sql:ro
+      - ./database/mysql/0002_expand_cv_languages.sql:/docker-entrypoint-initdb.d/0002_expand_cv_languages.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot"]
       interval: 10s

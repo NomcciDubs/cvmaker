@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   cvInputRequestSchema,
   importImproveRequestSchema,
+  languageSchema,
   pdfArchiveFilenameSchema,
   pdfQuotaSettingsSchema,
   pdfRequestSchema,
   photoRequestSchema,
+  renderCvRequestSchema,
 } from "./index";
 
 const cv = { personal_info: { full_name: "Ada Lovelace" } };
@@ -57,6 +59,15 @@ describe("portable HTTP contracts", () => {
     expect(importImproveRequestSchema.safeParse({ ...base, targetRole: "Engineer" }).success).toBe(true);
     expect(importImproveRequestSchema.safeParse({ ...base, instruction: "Improve the summary" }).success).toBe(true);
     expect(importImproveRequestSchema.safeParse({ ...base, importWorkflowId: "invalid", targetRole: "Engineer" }).success).toBe(false);
+  });
+
+  it("accepts the 12 document languages and rejects unknown codes", () => {
+    for (const language of ["en", "es", "pt", "fr", "de", "it", "nl", "pl", "tr", "id", "vi", "ro"]) {
+      expect(languageSchema.safeParse(language).success).toBe(true);
+      expect(renderCvRequestSchema.safeParse({ cv, ...renderOptions, language }).success).toBe(true);
+    }
+    expect(languageSchema.safeParse("xx").success).toBe(false);
+    expect(renderCvRequestSchema.safeParse({ cv, ...renderOptions, language: "xx" }).success).toBe(false);
   });
 
   it("validates PDF render requests and archive filenames", () => {

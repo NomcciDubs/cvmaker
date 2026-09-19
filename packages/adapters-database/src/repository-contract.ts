@@ -37,6 +37,26 @@ export function databaseRepositoryContract(name: string, createRepositories: Cre
       expect(await repositories.applications.list("owner-b", 50)).toEqual([]);
     });
 
+    it("stores applications and CVs with extended document languages", async () => {
+      const repositories = await createRepositories();
+      const tracked = await repositories.applications.save("owner-a", { ...application, language: "pt" });
+      const saved = (await repositories.cvs.save("owner-a", {
+        name: "Ada PT",
+        sourceType: "manual",
+        cv,
+        html: "<p>Ada</p>",
+        language: "ro",
+        style: "modern",
+        template: "cv_base",
+      })) as { language: string };
+      const listed = (await repositories.cvs.list("owner-a")) as Array<{ language: string }>;
+
+      expect(tracked.language).toBe("pt");
+      expect(saved.language).toBe("ro");
+      expect((await repositories.applications.list("owner-a", 50))[0]?.language).toBe("pt");
+      expect(listed[0]?.language).toBe("ro");
+    });
+
     it("consumes AI usage and import workflows atomically", async () => {
       const repositories = await createRepositories();
       expect(await repositories.usage.tryConsumeAiUse("owner-a", "2026-01-02", 1)).toBe(true);

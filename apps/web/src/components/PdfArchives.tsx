@@ -39,6 +39,7 @@ export function PdfExportButton({ api, messages, snapshot, userId, disabled }: P
     <div className="pdf-export">
       <button
         type="button"
+        className="btn btn-primary"
         disabled={disabled || exportPdf.isPending}
         onClick={() => exportPdf.mutate()}
       >
@@ -76,8 +77,8 @@ export function PdfArchives({ api, messages, locale, userId }: PdfArchivesProps)
     <section className="library" aria-labelledby="archives-title">
       <div className="library-heading">
         <div>
-          <p className="eyebrow">{messages.pdfArchiveHint}</p>
           <h2 id="archives-title">{messages.pdfArchiveTitle}</h2>
+          <p className="library-hint">{messages.pdfArchiveHint}</p>
         </div>
       </div>
       <div className="library-drawer">
@@ -98,7 +99,7 @@ export function PdfArchives({ api, messages, locale, userId }: PdfArchivesProps)
               <a className="button-link" href={archive.downloadPath} download={archive.filename}>{messages.downloadPdf}</a>
               <button
                 type="button"
-                className="danger"
+                className="btn btn-danger"
                 disabled={remove.isPending}
                 onClick={() => {
                   if (window.confirm(messages.deleteArchiveConfirm)) remove.mutate(archive.id);

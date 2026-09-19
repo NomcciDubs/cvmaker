@@ -20,16 +20,18 @@ function modelWith(...responses: string[]): ChatModel & { complete: ReturnType<t
 
 describe("PortableCvAiService prompts", () => {
   it.each([
-    ["en" as const, "Convert this resume", "Clean resume:\nsource resume"],
-    ["es" as const, "Convierte este CV", "CV limpio:\nsource resume"],
-  ])("builds the bilingual import prompt for %s", async (language, opening, source) => {
+    ["en" as const, "English"],
+    ["pt" as const, "Portuguese"],
+    ["vi" as const, "Vietnamese"],
+  ])("builds the stable import prompt naming the %s output language", async (language, output) => {
     const model = modelWith(JSON.stringify(cv));
     await new PortableCvAiService(model).import("source resume", language);
 
     const request = model.complete.mock.calls[0]![0] as ChatModelRequest;
     expect(request).toMatchObject({ temperature: 0.2, responseFormat: "json" });
-    expect(request.messages[0]?.content).toContain(opening);
-    expect(request.messages[0]?.content).toContain(source);
+    expect(request.messages[0]?.content).toContain("Convert this resume");
+    expect(request.messages[0]?.content).toContain(`in ${output}`);
+    expect(request.messages[0]?.content).toContain("Clean resume:\nsource resume");
     expect(request.messages[0]?.content).toContain("personal_info");
   });
 
@@ -44,13 +46,16 @@ describe("PortableCvAiService prompts", () => {
     expect(rewrite).toContain("Target role:\nEngineer");
     expect(rewrite).toContain("Job description");
     expect(rewrite).toContain("Needs TypeScript");
-    expect(modify).toContain("Instruccion:\nDestaca liderazgo");
-    expect(modify).toContain("Oferta de trabajo");
+    expect(rewrite).toContain("in English");
+    expect(modify).toContain("Instruction:\nDestaca liderazgo");
+    expect(modify).toContain("Job description");
+    expect(modify).toContain("in Spanish");
   });
 
   it.each([
     ["en" as const, "into English"],
     ["es" as const, "into Spanish"],
+    ["ro" as const, "into Romanian"],
   ])("requests translation into the selected language", async (language, expected) => {
     const model = modelWith(JSON.stringify(cv));
     await new PortableCvAiService(model).translate(cv, language);

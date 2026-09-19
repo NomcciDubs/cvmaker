@@ -2,9 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Create and preview a focused professional CV with Nomcci CVMaker." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#e9e8e4" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Nomcci CVMaker</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("cvmaker.theme");
+          var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = dark ? "dark" : "light";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#0d1117" : "#e9e8e4");
+        } catch (error) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

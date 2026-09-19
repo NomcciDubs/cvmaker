@@ -1,4 +1,4 @@
-import type { CvData, CvSourceType, CvStyle, CvTemplate, Language, SavedCvInput } from "@nomcci/cvmaker-domain";
+import type { CvData, CvLanguage, CvSourceType, CvStyle, CvTemplate, SavedCvInput } from "@nomcci/cvmaker-domain";
 
 import type { SavedCvRecord } from "./types";
 
@@ -28,7 +28,7 @@ export function mapSavedCvRow(row: SavedCvRow): SavedCvRecord {
     ...(row.target_role === null ? {} : { targetRole: row.target_role }),
     cv: parseCvJson(row.cv_json),
     html: row.cv_html,
-    language: row.language as Language,
+    language: row.language as CvLanguage,
     style: row.style as CvStyle,
     template: row.template as CvTemplate,
     createdAt: row.created_at,

@@ -1,8 +1,8 @@
 import type {
   ApplicationInput,
   CvData,
+  CvLanguage,
   CvStyle,
-  Language,
   PdfQuotaSettings,
   Principal,
   RenderOptions,
@@ -125,7 +125,7 @@ export interface AdminMetrics {
   savedCvs: { savedCvs: number };
   usage: { aiUses: number; aiUsers: number };
   topCompanies: Array<{ company: string; applications: number }>;
-  recentApplications: Array<{ company: string; role: string; status: string; language: Language; style: CvStyle; createdAt: string }>;
+  recentApplications: Array<{ company: string; role: string; status: string; language: CvLanguage; style: CvStyle; createdAt: string }>;
 }
 
 export interface AdminMetricsRepository {
@@ -133,10 +133,10 @@ export interface AdminMetricsRepository {
 }
 
 export interface CvAiService {
-  import(description: string, language: Language): Promise<CvData>;
-  rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: Language): Promise<CvData>;
-  modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: Language): Promise<CvData>;
-  translate(cv: CvData, language: Language): Promise<CvData>;
+  import(description: string, language: CvLanguage): Promise<CvData>;
+  rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData>;
+  modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData>;
+  translate(cv: CvData, language: CvLanguage): Promise<CvData>;
 }
 
 export type ChatMessageRole = "system" | "user" | "assistant";

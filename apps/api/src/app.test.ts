@@ -158,11 +158,25 @@ describe("API boundaries", () => {
     const response = await app.request("/api/cv/render", {
       method: "POST",
       headers: { authorization: "Bearer valid", "content-type": "application/json" },
-      body: JSON.stringify({ ...validRenderRequest, language: "fr" }),
+      body: JSON.stringify({ ...validRenderRequest, language: "xx" }),
     });
     expect(response.status).toBe(400);
     expect((await response.json()).error).toBe("validation_error");
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it("accepts every catalogued document language for rendering", async () => {
+    const render = vi.fn(() => "<html>portable</html>");
+    const { app } = fixture({ renderer: { render } });
+    for (const language of ["en", "es", "pt", "fr", "de", "it", "nl", "pl", "tr", "id", "vi", "ro"]) {
+      const response = await app.request("/api/cv/render", {
+        method: "POST",
+        headers: { authorization: "Bearer valid", "content-type": "application/json" },
+        body: JSON.stringify({ ...validRenderRequest, language }),
+      });
+      expect(response.status).toBe(200);
+    }
+    expect(render).toHaveBeenCalledTimes(12);
   });
 
   it("renders through the injected renderer", async () => {

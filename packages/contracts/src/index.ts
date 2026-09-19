@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { CV_SOURCE_TYPES, CV_STYLES, CV_TEMPLATES, LANGUAGES } from "@nomcci/cvmaker-domain";
+import { CV_LANGUAGES, CV_SOURCE_TYPES, CV_STYLES, CV_TEMPLATES } from "@nomcci/cvmaker-domain";
 
 const optionalText = z.string().trim().max(10_000).optional();
 const shortOptionalText = z.string().trim().max(500).optional();
 const optionalLegacyName = (fallback: string) => z.string().trim().max(120).optional().transform((value) => value || fallback);
 
-export const languageSchema = z.enum(LANGUAGES);
+export const languageSchema = z.enum(CV_LANGUAGES);
 export const cvStyleSchema = z.enum(CV_STYLES);
 export const cvTemplateSchema = z.enum(CV_TEMPLATES);
 

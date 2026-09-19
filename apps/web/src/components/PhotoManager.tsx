@@ -16,6 +16,7 @@ export function PhotoManager({ api, messages, userId, selectedPhotoUrl, onSelect
   const queryClient = useQueryClient();
   const [fileError, setFileError] = useState("");
   const [rotated, setRotated] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const photos = useQuery({ queryKey: ["photos", userId], queryFn: api.listPhotos, enabled: Boolean(userId) });
 
   const upload = useMutation({
@@ -65,7 +66,18 @@ export function PhotoManager({ api, messages, userId, selectedPhotoUrl, onSelect
         <small>{messages.photoCount.replace("{count}", String(items.length)).replace("{max}", String(MAX_PHOTOS))}</small>
       </div>
       <p className="photo-hint">{messages.photoHint}</p>
-      <label className="photo-drop">
+      <label
+        className="photo-drop"
+        data-dragging={dragging ? "true" : undefined}
+        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          const file = event.dataTransfer.files?.[0];
+          if (file && !upload.isPending) upload.mutate(file);
+        }}
+      >
         <span>{upload.isPending ? messages.photoUploading : messages.uploadPhoto}</span>
         <input
           type="file"
@@ -87,15 +99,15 @@ export function PhotoManager({ api, messages, userId, selectedPhotoUrl, onSelect
         {items.map((photo) => {
           const selected = photo.dataUrl === selectedPhotoUrl;
           return (
-            <article className={`photo-item ${selected ? "selected" : ""}`} key={photo.id}>
+            <article className="photo-item" data-selected={selected ? "true" : undefined} key={photo.id}>
               <img src={photo.dataUrl} alt={photo.name} width={96} height={96} />
               <strong>{photo.name}</strong>
               {selected && <small>{messages.photoSelected}</small>}
               <div className="photo-item-actions">
-                {!selected && <button type="button" onClick={() => onSelect(photo.dataUrl)}>{messages.usePhoto}</button>}
+                {!selected && <button type="button" className="btn btn-primary" onClick={() => onSelect(photo.dataUrl)}>{messages.usePhoto}</button>}
                 <button
                   type="button"
-                  className="danger"
+                  className="btn btn-danger"
                   disabled={remove.isPending}
                   onClick={() => {
                     if (window.confirm(messages.deletePhotoConfirm)) remove.mutate(photo);

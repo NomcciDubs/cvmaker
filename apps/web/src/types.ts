@@ -1,18 +1,20 @@
-import type { CvData, CvSourceType, CvStyle, CvTemplate, Language, SavedCvInput } from "@nomcci/cvmaker-domain";
+import type { CvData, CvLanguage, CvSourceType, CvStyle, CvTemplate, SavedCvInput } from "@nomcci/cvmaker-domain";
 
-export type { CvData, CvStyle, CvTemplate } from "@nomcci/cvmaker-domain";
-export type Locale = Language;
+export type { CvData, CvLanguage, CvStyle, CvTemplate } from "@nomcci/cvmaker-domain";
+
+export type UiLocale = "en" | "es";
+export type Locale = UiLocale;
 
 export interface RenderCvRequest {
   cv: CvData;
   style: CvStyle;
   template: CvTemplate;
-  language: Locale;
+  language: CvLanguage;
 }
 
 export interface ImportCvRequest {
   description: string;
-  language: Locale;
+  language: CvLanguage;
 }
 
 export interface ImportCvResponse {
@@ -24,7 +26,7 @@ export interface ModifyCvRequest {
   cv: CvData;
   instruction: string;
   jobDescription?: string;
-  language: Locale;
+  language: CvLanguage;
 }
 
 export interface ImportImproveRequest extends ModifyCvRequest {
@@ -99,7 +101,7 @@ export interface AdminMetrics {
     company: string;
     role: string;
     status: string;
-    language: Locale;
+    language: CvLanguage;
     style: string;
     createdAt: string;
   }>;

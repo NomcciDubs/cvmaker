@@ -51,8 +51,8 @@ export function ApplicationTracker({ api, messages, locale, userId, snapshot, de
     <section className="library" aria-labelledby="applications-title">
       <div className="library-heading">
         <div>
-          <p className="eyebrow">{messages.applicationsHint}</p>
           <h2 id="applications-title">{messages.applicationsTitle}</h2>
+          <p className="library-hint">{messages.applicationsHint}</p>
         </div>
       </div>
       <div className="library-drawer">
@@ -64,15 +64,15 @@ export function ApplicationTracker({ api, messages, locale, userId, snapshot, de
           }}
         >
           <div className="field-grid">
-            <label>{messages.company}<input value={company} onChange={(event) => setCompany(event.target.value)} /></label>
-            <label>{messages.role}<input value={role} onChange={(event) => setRole(event.target.value)} /></label>
+            <label className="field"><span className="field-label">{messages.company}</span><input value={company} onChange={(event) => setCompany(event.target.value)} /></label>
+            <label className="field"><span className="field-label">{messages.role}</span><input value={role} onChange={(event) => setRole(event.target.value)} /></label>
           </div>
           <div className="field-grid">
-            <label>{messages.applicationStatus}<input value={status} onChange={(event) => setStatus(event.target.value)} /></label>
-            <label>{messages.jobUrl}<input type="url" value={jobUrl} onChange={(event) => setJobUrl(event.target.value)} /></label>
+            <label className="field"><span className="field-label">{messages.applicationStatus}</span><input value={status} onChange={(event) => setStatus(event.target.value)} /></label>
+            <label className="field"><span className="field-label">{messages.jobUrl}</span><input type="url" value={jobUrl} onChange={(event) => setJobUrl(event.target.value)} /></label>
           </div>
           <div className="wizard-actions">
-            <button type="submit" disabled={!company.trim() || !role.trim() || !ready || track.isPending}>
+            <button type="submit" className="btn btn-primary" disabled={!company.trim() || !role.trim() || !ready || track.isPending}>
               {track.isPending ? messages.savingApplication : messages.saveApplication}
             </button>
           </div>

@@ -37,5 +37,7 @@ Thumbs.db
 # Local plans and migration reference; never publish these directories.
 Plans/
 **/Plans/
+plans/
+**/plans/
 page/
 worker/

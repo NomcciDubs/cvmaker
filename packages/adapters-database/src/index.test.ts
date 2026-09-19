@@ -26,13 +26,18 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
+async function migrate(database: Database.Database): Promise<void> {
+  for (const file of ["0001_initial.sql", "0002_expand_cv_languages.sql"]) {
+    database.exec(await readFile(new URL(`../../../database/sqlite/${file}`, import.meta.url), "utf8"));
+  }
+}
+
 async function fixture(dependencies: ConstructorParameters<typeof SqliteCvRepository>[1] = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cvmaker-database-"));
   temporaryDirectories.push(directory);
   const filename = join(directory, "test.sqlite");
-  const migration = await readFile(new URL("../../../database/sqlite/0001_initial.sql", import.meta.url), "utf8");
   const database = new Database(filename);
-  database.exec(migration);
+  await migrate(database);
   database.close();
 
   const repository = new SqliteCvRepository(filename, dependencies);
@@ -44,9 +49,8 @@ async function bundleFixture(): Promise<SqliteRepositoryBundle> {
   const directory = await mkdtemp(join(tmpdir(), "cvmaker-database-bundle-"));
   temporaryDirectories.push(directory);
   const filename = join(directory, "test.sqlite");
-  const migration = await readFile(new URL("../../../database/sqlite/0001_initial.sql", import.meta.url), "utf8");
   const database = new Database(filename);
-  database.exec(migration);
+  await migrate(database);
   database.close();
 
   let id = 0;
@@ -125,6 +129,59 @@ describe("SqliteCvRepository", () => {
 
     expect(saved.id).toBe("available");
     expect(await repository.list("owner-a")).toHaveLength(1);
+  });
+});
+
+describe("SQLite language migration 0002", () => {
+  it("preserves existing en/es records and accepts the extended catalog", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cvmaker-database-migration-"));
+    temporaryDirectories.push(directory);
+    const filename = join(directory, "migration.sqlite");
+    const database = new Database(filename);
+    database.exec(await readFile(new URL("../../../database/sqlite/0001_initial.sql", import.meta.url), "utf8"));
+    database.prepare(`INSERT INTO saved_cvs (
+      id, user_id, name, source_type, source_input, target_role, cv_json, cv_html,
+      language, style, template, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      "cv-1", "owner-a", "Ada CV", "manual", null, null,
+      JSON.stringify({ personal_info: { full_name: "Ada Lovelace" } }), "<p>Ada</p>",
+      "en", "modern", "cv_base", "2026-01-02T00:00:00.000Z", "2026-01-02T00:00:00.000Z",
+    );
+    database.prepare(`INSERT INTO applications (
+      id, user_id, company, role, status, job_url, job_description, cv_json, cv_html,
+      language, style, template, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      "app-1", "owner-a", "Nomcci", "Engineer", "draft", null, null,
+      JSON.stringify({ personal_info: { full_name: "Ada Lovelace" } }), "<p>Ada</p>",
+      "es", "modern", "cv_base", "2026-01-02T00:00:00.000Z", "2026-01-02T00:00:00.000Z",
+    );
+
+    database.exec(await readFile(new URL("../../../database/sqlite/0002_expand_cv_languages.sql", import.meta.url), "utf8"));
+
+    expect(database.prepare("SELECT language FROM saved_cvs WHERE id = 'cv-1'").get()).toEqual({ language: "en" });
+    expect(database.prepare("SELECT language FROM applications WHERE id = 'app-1'").get()).toEqual({ language: "es" });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM saved_cvs").get()).toEqual({ count: 1 });
+
+    const insertCv = database.prepare(`INSERT INTO saved_cvs (
+      id, user_id, name, source_type, source_input, target_role, cv_json, cv_html,
+      language, style, template, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    insertCv.run(
+      "cv-2", "owner-a", "Ada PT", "manual", null, null,
+      JSON.stringify({ personal_info: { full_name: "Ada Lovelace" } }), "<p>Ada</p>",
+      "pt", "modern", "cv_base", "2026-01-03T00:00:00.000Z", "2026-01-03T00:00:00.000Z",
+    );
+    insertCv.run(
+      "cv-3", "owner-a", "Ada RO", "manual", null, null,
+      JSON.stringify({ personal_info: { full_name: "Ada Lovelace" } }), "<p>Ada</p>",
+      "ro", "modern", "cv_base", "2026-01-03T00:00:00.000Z", "2026-01-03T00:00:00.000Z",
+    );
+    expect(() => insertCv.run(
+      "cv-4", "owner-a", "Ada XX", "manual", null, null,
+      JSON.stringify({ personal_info: { full_name: "Ada Lovelace" } }), "<p>Ada</p>",
+      "xx", "modern", "cv_base", "2026-01-03T00:00:00.000Z", "2026-01-03T00:00:00.000Z",
+    )).toThrow();
+    database.close();
   });
 });
 

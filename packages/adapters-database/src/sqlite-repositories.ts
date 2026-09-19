@@ -22,8 +22,8 @@ import type {
 import {
   DEFAULT_PDF_QUOTA_SETTINGS,
   type ApplicationInput,
+  type CvLanguage,
   type CvStyle,
-  type Language,
   type PdfQuotaSettings,
 } from "@nomcci/cvmaker-domain";
 
@@ -47,7 +47,7 @@ interface ApplicationRow {
   jobDescription: string | null;
   cvJson: string;
   html: string;
-  language: Language;
+  language: CvLanguage;
   style: CvStyle;
   template: ApplicationInput["template"];
   createdAt: string;

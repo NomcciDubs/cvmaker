@@ -50,8 +50,8 @@ export function AdminPanel({ api, messages, locale, userRole }: AdminPanelProps)
     <section className="library admin-panel" aria-labelledby="admin-title">
       <div className="library-heading">
         <div>
-          <p className="eyebrow">{messages.adminHint}</p>
           <h2 id="admin-title">{messages.adminTitle}</h2>
+          <p className="library-hint">{messages.adminHint}</p>
         </div>
       </div>
       <div className="library-drawer">
@@ -92,16 +92,16 @@ export function AdminPanel({ api, messages, locale, userRole }: AdminPanelProps)
           >
             <h3>{messages.pdfLimitsTitle}</h3>
             <div className="field-grid">
-              <label>{messages.defaultDaily}<input type="number" min={1} max={100} value={form.defaultDaily} onChange={(event) => setForm({ ...form, defaultDaily: event.target.value })} /></label>
-              <label>{messages.friendDaily}<input type="number" min={1} max={100} value={form.friendDaily} onChange={(event) => setForm({ ...form, friendDaily: event.target.value })} /></label>
+              <label className="field"><span className="field-label">{messages.defaultDaily}</span><input type="number" min={1} max={100} value={form.defaultDaily} onChange={(event) => setForm({ ...form, defaultDaily: event.target.value })} /></label>
+              <label className="field"><span className="field-label">{messages.friendDaily}</span><input type="number" min={1} max={100} value={form.friendDaily} onChange={(event) => setForm({ ...form, friendDaily: event.target.value })} /></label>
             </div>
             <div className="field-grid">
-              <label>{messages.superAdminDaily}<input type="number" min={1} max={100} value={form.superAdminDaily} onChange={(event) => setForm({ ...form, superAdminDaily: event.target.value })} /></label>
-              <label>{messages.maxArchivedPdfs}<input type="number" min={1} max={100} value={form.maxArchivedPdfs} onChange={(event) => setForm({ ...form, maxArchivedPdfs: event.target.value })} /></label>
+              <label className="field"><span className="field-label">{messages.superAdminDaily}</span><input type="number" min={1} max={100} value={form.superAdminDaily} onChange={(event) => setForm({ ...form, superAdminDaily: event.target.value })} /></label>
+              <label className="field"><span className="field-label">{messages.maxArchivedPdfs}</span><input type="number" min={1} max={100} value={form.maxArchivedPdfs} onChange={(event) => setForm({ ...form, maxArchivedPdfs: event.target.value })} /></label>
             </div>
-            <label>{messages.maxArchiveSize}<input type="number" min={1} max={250} value={form.maxArchiveSizeMib} onChange={(event) => setForm({ ...form, maxArchiveSizeMib: event.target.value })} /></label>
+            <label className="field"><span className="field-label">{messages.maxArchiveSize}</span><input type="number" min={1} max={250} value={form.maxArchiveSizeMib} onChange={(event) => setForm({ ...form, maxArchiveSizeMib: event.target.value })} /></label>
             <div className="wizard-actions">
-              <button type="submit" disabled={save.isPending}>{save.isPending ? messages.savingLimits : messages.saveLimits}</button>
+              <button type="submit" className="btn btn-primary" disabled={save.isPending}>{save.isPending ? messages.savingLimits : messages.saveLimits}</button>
             </div>
             {save.isSuccess && <p className="success" role="status">{messages.limitsSaved}</p>}
             {save.isError && <p className="error" role="alert">{messages.limitsError}</p>}

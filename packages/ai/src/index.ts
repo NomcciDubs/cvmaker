@@ -1,5 +1,5 @@
 import type { ChatModel, CvAiService } from "@nomcci/cvmaker-application";
-import type { CvData, Language } from "@nomcci/cvmaker-domain";
+import type { CvData, CvLanguage } from "@nomcci/cvmaker-domain";
 
 import { hasSuspiciousExperienceDistribution, normalizeCv, parseCvJson } from "./normalize";
 import { importPrompt, modifyPrompt, repairPrompt, rewritePrompt, translatePrompt } from "./prompts";
@@ -18,7 +18,7 @@ export class PortableCvAiService implements CvAiService {
     this.repairSuspiciousExperience = options.repairSuspiciousExperience ?? true;
   }
 
-  async import(description: string, language: Language): Promise<CvData> {
+  async import(description: string, language: CvLanguage): Promise<CvData> {
     const prompt = importPrompt(description, language);
     const cv = normalizeCv(parseCvJson(await this.complete(prompt, true)), description);
     if (!this.repairSuspiciousExperience || !hasSuspiciousExperienceDistribution(cv)) return cv;
@@ -30,15 +30,15 @@ export class PortableCvAiService implements CvAiService {
     }
   }
 
-  async rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: Language): Promise<CvData> {
+  async rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData> {
     return parseCvJson(await this.complete(rewritePrompt(cv, targetRole, jobDescription, language)));
   }
 
-  async modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: Language): Promise<CvData> {
+  async modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData> {
     return parseCvJson(await this.complete(modifyPrompt(cv, instruction, jobDescription, language)));
   }
 
-  async translate(cv: CvData, language: Language): Promise<CvData> {
+  async translate(cv: CvData, language: CvLanguage): Promise<CvData> {
     return parseCvJson(await this.complete(translatePrompt(cv, language)));
   }
 

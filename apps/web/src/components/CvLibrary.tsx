@@ -30,10 +30,10 @@ export function CvLibrary({ api, locale, messages, userId, onUseInput, onUseCv }
 
   return <section className="library" aria-labelledby="library-title">
     <div className="library-heading">
-      <div><p className="eyebrow">{messages.libraryEyebrow}</p><h2 id="library-title">{messages.libraryTitle}</h2></div>
+      <h2 id="library-title">{messages.libraryTitle}</h2>
       <div className="library-tabs">
-        <button type="button" className={view === "inputs" ? "active" : ""} onClick={() => setView(view === "inputs" ? null : "inputs")}>{messages.inputs}</button>
-        <button type="button" className={view === "outputs" ? "active" : ""} onClick={() => setView(view === "outputs" ? null : "outputs")}>{messages.outputs}</button>
+        <button type="button" className={`btn ${view === "inputs" ? "btn-primary" : "btn-secondary"}`} onClick={() => setView(view === "inputs" ? null : "inputs")}>{messages.inputs}</button>
+        <button type="button" className={`btn ${view === "outputs" ? "btn-primary" : "btn-secondary"}`} onClick={() => setView(view === "outputs" ? null : "outputs")}>{messages.outputs}</button>
       </div>
     </div>
     {view && <div className="library-drawer">
@@ -42,13 +42,13 @@ export function CvLibrary({ api, locale, messages, userId, onUseInput, onUseCv }
       {!isPending && !isError && records?.length === 0 && <p className="empty-library">{messages.emptyLibrary}</p>}
       {view === "inputs" && inputs.data?.inputs.map((input) => <article className="library-item" key={input.id}>
         <div><strong>{input.name}</strong><small>{formatDate(input.updatedAt, locale)}</small><p>{input.content.slice(0, 150)}</p></div>
-        <button type="button" onClick={() => onUseInput(input)}>{messages.useInput}</button>
+        <button type="button" className="btn btn-primary" onClick={() => onUseInput(input)}>{messages.useInput}</button>
       </article>)}
       {view === "outputs" && cvs.data?.cvs.map((cv) => <article className="library-item" key={cv.id}>
         <div><strong>{cv.name}</strong><small>{formatDate(cv.updatedAt, locale)} · {cv.style.replaceAll("_", " ")}</small><p>{cv.cv.personal_info.full_name || messages.unnamedCv}</p></div>
         <div className="library-item-actions">
-          <button type="button" onClick={() => onUseCv(cv)}>{messages.editCv}</button>
-          <button type="button" className="danger" disabled={removeCv.isPending} onClick={() => {
+          <button type="button" className="btn btn-secondary" onClick={() => onUseCv(cv)}>{messages.editCv}</button>
+          <button type="button" className="btn btn-danger" disabled={removeCv.isPending} onClick={() => {
             if (window.confirm(messages.deleteCvConfirm)) removeCv.mutate(cv.id);
           }}>{messages.deleteCv}</button>
         </div>

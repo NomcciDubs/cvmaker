@@ -21,8 +21,8 @@ import type {
 import {
   DEFAULT_PDF_QUOTA_SETTINGS,
   type ApplicationInput,
+  type CvLanguage,
   type CvStyle,
-  type Language,
   type PdfQuotaSettings,
 } from "@nomcci/cvmaker-domain";
 import { createPool, type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
@@ -40,7 +40,7 @@ interface ApplicationRow extends RowDataPacket {
   jobDescription: string | null;
   cvJson: string | object;
   html: string;
-  language: Language;
+  language: CvLanguage;
   style: CvStyle;
   template: ApplicationInput["template"];
   createdAt: string;

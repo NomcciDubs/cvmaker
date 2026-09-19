@@ -27,7 +27,7 @@ import type {
   SavedPhoto,
   UsageRepository,
 } from "@nomcci/cvmaker-application";
-import { DEFAULT_PDF_QUOTA_SETTINGS, type ApplicationInput, type CvData, type Language, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
+import { DEFAULT_PDF_QUOTA_SETTINGS, type ApplicationInput, type CvData, type CvLanguage, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
 
 export class NodeClock implements Clock {
   now(): Date {
@@ -67,7 +67,7 @@ export class FixtureAuthGateway implements AuthGateway {
 }
 
 export class DeterministicFakeCvAi implements CvAiService {
-  async import(description: string, language: Language): Promise<CvData> {
+  async import(description: string, language: CvLanguage): Promise<CvData> {
     return {
       personal_info: { full_name: language === "es" ? "Persona de Ejemplo" : "Example Person" },
       summary: description.trim(),
@@ -78,15 +78,15 @@ export class DeterministicFakeCvAi implements CvAiService {
     };
   }
 
-  async rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: Language): Promise<CvData> {
+  async rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData> {
     return this.withSummary(cv, `rewrite:${language}:${targetRole}:${jobDescription ?? ""}`);
   }
 
-  async modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: Language): Promise<CvData> {
+  async modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData> {
     return this.withSummary(cv, `modify:${language}:${instruction}:${jobDescription ?? ""}`);
   }
 
-  async translate(cv: CvData, language: Language): Promise<CvData> {
+  async translate(cv: CvData, language: CvLanguage): Promise<CvData> {
     return this.withSummary(cv, `translate:${language}`);
   }
 

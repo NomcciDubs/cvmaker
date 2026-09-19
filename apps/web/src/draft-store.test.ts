@@ -10,7 +10,8 @@ const draft: CvDraftData = {
   html: "",
   template: "cv_base",
   style: "classic",
-  cvLanguage: "en",
+  documentLanguage: "en",
+  aiTargetLanguage: "pt",
   sourceInput: "Ada's CV",
   importName: "ada",
   cvName: "Ada CV",
@@ -22,12 +23,14 @@ const draft: CvDraftData = {
   updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
+const legacyKey = (userId: string) => `cvmaker_unsaved_draft_v2:${encodeURIComponent(userId)}`;
+
 describe("draft store", () => {
   beforeEach(() => localStorage.clear());
 
-  it("scopes version 2 drafts to the encoded user id", () => {
+  it("scopes version 3 drafts to the encoded user id", () => {
     saveDraft(localStorage, "user/a", draft);
-    expect(draftKey("user/a")).toBe("cvmaker_unsaved_draft_v2:user%2Fa");
+    expect(draftKey("user/a")).toBe("cvmaker_unsaved_draft_v3:user%2Fa");
     expect(loadDraft(localStorage, "user/a")).toEqual(draft);
     expect(loadDraft(localStorage, "user-b")).toBeNull();
   });
@@ -35,15 +38,15 @@ describe("draft store", () => {
   it("ignores corrupt, wrong-version, and wrong-user data", () => {
     localStorage.setItem(draftKey("user-a"), "not-json");
     expect(loadDraft(localStorage, "user-a")).toBeNull();
-    localStorage.setItem(draftKey("user-a"), JSON.stringify({ version: 1, userId: "user-a", data: draft }));
+    localStorage.setItem(draftKey("user-a"), JSON.stringify({ version: 2, userId: "user-a", data: draft }));
     expect(loadDraft(localStorage, "user-a")).toBeNull();
-    localStorage.setItem(draftKey("user-a"), JSON.stringify({ version: 2, userId: "user-b", data: draft }));
+    localStorage.setItem(draftKey("user-a"), JSON.stringify({ version: 3, userId: "user-b", data: draft }));
     expect(loadDraft(localStorage, "user-a")).toBeNull();
   });
 
-  it("normalizes the legacy version 2 numeric step and improvement object", () => {
+  it("normalizes the legacy numeric step and improvement object", () => {
     localStorage.setItem(draftKey("user-a"), JSON.stringify({
-      version: 2,
+      version: 3,
       userId: "user-a",
       data: {
         ...draft,
@@ -62,6 +65,37 @@ describe("draft store", () => {
       targetRole: "Architect",
       jobDescription: "Distributed systems",
       instruction: "Be concise",
+    }));
+  });
+
+  it("migrates a version 2 draft without discarding existing en/es data", () => {
+    const { documentLanguage: _document, aiTargetLanguage: _target, ...v2data } = draft;
+    localStorage.setItem(legacyKey("user-a"), JSON.stringify({
+      version: 2,
+      userId: "user-a",
+      data: { ...v2data, cvLanguage: "es" },
+    }));
+
+    expect(loadDraft(localStorage, "user-a")).toEqual(expect.objectContaining({
+      step: "source",
+      documentLanguage: "es",
+      aiTargetLanguage: "es",
+      cvName: "Ada CV",
+    }));
+    expect(localStorage.getItem(legacyKey("user-a"))).toBeNull();
+    expect(loadDraft(localStorage, "user-a")).toEqual(expect.objectContaining({ documentLanguage: "es" }));
+  });
+
+  it("falls back to English for unknown draft languages", () => {
+    localStorage.setItem(draftKey("user-a"), JSON.stringify({
+      version: 3,
+      userId: "user-a",
+      data: { ...draft, documentLanguage: "xx", aiTargetLanguage: "xx" },
+    }));
+
+    expect(loadDraft(localStorage, "user-a")).toEqual(expect.objectContaining({
+      documentLanguage: "en",
+      aiTargetLanguage: "en",
     }));
   });
 

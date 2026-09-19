@@ -1,4 +1,4 @@
-import { createBlankCv, type CvData, type CvStyle, type CvTemplate } from "@nomcci/cvmaker-domain";
+import { createBlankCv, type CvData, type CvLanguage, type CvStyle, type CvTemplate } from "@nomcci/cvmaker-domain";
 import type { CvDraftData } from "./draft-store";
 
 export const WIZARD_STEPS = ["template", "source", "preview", "improve"] as const;
@@ -26,9 +26,12 @@ export interface WizardState {
   cv: CvData;
   html: string;
   previewStale: boolean;
+  /** Language of the currently rendered HTML. */
+  documentLanguage: CvLanguage;
   importWorkflowId: string | null;
   importedOriginalCv: CvData | null;
   previousCv: CvData | null;
+  previousLanguage: CvLanguage | null;
 }
 
 export type WizardAction =
@@ -36,14 +39,14 @@ export type WizardAction =
   | { type: "selectTemplate"; choice: TemplateChoice }
   | { type: "updateCv"; cv: CvData }
   | { type: "imported"; cv: CvData; importWorkflowId: string }
-  | { type: "aiApplied"; cv: CvData; html: string; consumedImportWorkflow: boolean }
+  | { type: "aiApplied"; cv: CvData; html: string; language: CvLanguage; consumedImportWorkflow: boolean }
   | { type: "undoAi"; html: string }
   | { type: "restoreDraft"; draft: CvDraftData }
-  | { type: "loadSavedCv"; cv: CvData; html: string; template: CvTemplate; style: CvStyle }
+  | { type: "loadSavedCv"; cv: CvData; html: string; template: CvTemplate; style: CvStyle; language: CvLanguage }
   | { type: "goTo"; step: WizardStep }
-  | { type: "rendered"; html: string };
+  | { type: "rendered"; html: string; language: CvLanguage; keepStep?: boolean };
 
-export function createWizardState(): WizardState {
+export function createWizardState(initialLanguage: CvLanguage = "en"): WizardState {
   const cv = createBlankCv();
   cv.experience = [{ role: "", company: "", location: "", start_date: "", end_date: "", description: [] }];
   return {
@@ -53,14 +56,16 @@ export function createWizardState(): WizardState {
     cv,
     html: "",
     previewStale: false,
+    documentLanguage: initialLanguage,
     importWorkflowId: null,
     importedOriginalCv: null,
     previousCv: null,
+    previousLanguage: null,
   };
 }
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
-  if (action.type === "reset") return createWizardState();
+  if (action.type === "reset") return { ...createWizardState(), documentLanguage: state.documentLanguage };
   if (action.type === "restoreDraft") {
     const choice = TEMPLATE_CHOICES.find(({ template, style }) => template === action.draft.template && style === action.draft.style);
     if (!choice) return state;
@@ -72,9 +77,11 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       cv: action.draft.cv,
       html: action.draft.html,
       previewStale: false,
+      documentLanguage: action.draft.documentLanguage,
       importWorkflowId: action.draft.importWorkflowId,
       importedOriginalCv: action.draft.importedOriginalCv,
       previousCv: null,
+      previousLanguage: null,
     };
   }
   if (action.type === "loadSavedCv") {
@@ -88,9 +95,11 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       cv: action.cv,
       html: action.html,
       previewStale: false,
+      documentLanguage: action.language,
       importWorkflowId: null,
       importedOriginalCv: null,
       previousCv: null,
+      previousLanguage: null,
     };
   }
   if (action.type === "selectTemplate") {
@@ -106,18 +115,37 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     return {
       ...state,
       previousCv: state.cv,
+      previousLanguage: state.documentLanguage,
       cv: action.cv,
       html: action.html,
+      documentLanguage: action.language,
       importWorkflowId: action.consumedImportWorkflow ? null : state.importWorkflowId,
       previewStale: false,
     };
   }
   if (action.type === "undoAi") {
     if (!state.previousCv) return state;
-    return { ...state, cv: state.previousCv, previousCv: null, html: action.html, previewStale: false };
+    return {
+      ...state,
+      cv: state.previousCv,
+      previousCv: null,
+      documentLanguage: state.previousLanguage ?? state.documentLanguage,
+      previousLanguage: null,
+      html: action.html,
+      previewStale: false,
+    };
   }
   if (action.type === "rendered") {
-    return { ...state, html: action.html, previewStale: false, step: "preview", maxStep: Math.max(state.maxStep, 2) };
+    return {
+      ...state,
+      html: action.html,
+      documentLanguage: action.language,
+      previewStale: false,
+      previousCv: null,
+      previousLanguage: null,
+      step: action.keepStep ? state.step : "preview",
+      maxStep: Math.max(state.maxStep, 2),
+    };
   }
 
   const nextIndex = WIZARD_STEPS.indexOf(action.step);
