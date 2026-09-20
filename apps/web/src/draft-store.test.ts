@@ -31,7 +31,10 @@ describe("draft store", () => {
   it("scopes version 3 drafts to the encoded user id", () => {
     saveDraft(localStorage, "user/a", draft);
     expect(draftKey("user/a")).toBe("cvmaker_unsaved_draft_v3:user%2Fa");
-    expect(loadDraft(localStorage, "user/a")).toEqual(draft);
+    expect(loadDraft(localStorage, "user/a")).toEqual({
+      ...draft,
+      cv: { ...draft.cv, personal_info: { ...draft.cv.personal_info, links: [] } },
+    });
     expect(loadDraft(localStorage, "user-b")).toBeNull();
   });
 
@@ -104,6 +107,9 @@ describe("draft store", () => {
     saveDraft(localStorage, "user-b", draft);
     clearDraft(localStorage, "user-a");
     expect(loadDraft(localStorage, "user-a")).toBeNull();
-    expect(loadDraft(localStorage, "user-b")).toEqual(draft);
+    expect(loadDraft(localStorage, "user-b")).toEqual({
+      ...draft,
+      cv: { ...draft.cv, personal_info: { ...draft.cv.personal_info, links: [] } },
+    });
   });
 });

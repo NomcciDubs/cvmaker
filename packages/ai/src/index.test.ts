@@ -83,6 +83,26 @@ describe("PortableCvAiService parsing and normalization", () => {
     expect(result.languages).toEqual([{ name: "English" }, { name: "Spanish" }]);
   });
 
+  it("coerces string links from the model into link objects", async () => {
+    const draft = {
+      personal_info: {
+        full_name: "Ada",
+        links: ["https://example.com/a", "example.com/b", "", "not a url"],
+      },
+      experience: [],
+      education: [],
+      skills: [],
+      languages: [],
+    };
+    const model = modelWith(JSON.stringify(draft));
+    const result = await new PortableCvAiService(model).import("Profile", "en");
+
+    expect(result.personal_info.links).toEqual([
+      { label: "https://example.com/a", url: "https://example.com/a" },
+      { label: "https://example.com/b", url: "https://example.com/b" },
+    ]);
+  });
+
   it("rejects model JSON without a full name", async () => {
     const model = modelWith('{"personal_info":{"full_name":""}}');
     await expect(new PortableCvAiService(model).translate(cv, "en")).rejects.toThrow("Invalid CV JSON");

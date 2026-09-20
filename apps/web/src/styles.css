@@ -1170,6 +1170,42 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .sheet-heading h2 { font-size: 1.2rem; }
 .sheet-heading p { margin-top: .25rem; color: var(--ink-3); font-size: .82rem; max-width: 46ch; }
 .sheet-body { padding: 1.25rem; overflow: auto; overscroll-behavior: contain; }
+
+/* ---------- AI loading overlay ---------- */
+.ai-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: color-mix(in srgb, #05070a 45%, transparent);
+  backdrop-filter: blur(2px);
+}
+.ai-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  max-width: min(22rem, 100%);
+  padding: 2rem 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  text-align: center;
+  animation: card-in var(--dur-2) var(--ease) both;
+}
+.ai-loading-card p { color: var(--ink-2); font-size: .92rem; text-wrap: pretty; }
+.ai-loading-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-3);
+  border-top-color: var(--accent);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .sheet-foot { padding: 1rem 1.25rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: .6rem; }
 
 /* ---------- Footer ---------- */

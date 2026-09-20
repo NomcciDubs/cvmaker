@@ -434,4 +434,68 @@ describe("CvEditor", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("heading", { name: "CV editor" })).toHaveFocus();
   });
+
+  it("imports CVs whose links arrive as bare strings without blocking the stage", async () => {
+    const user = userEvent.setup();
+    const importedCv = {
+      personal_info: { full_name: "Grace Hopper", links: ["https://example.com/a", "example.com/b"] },
+      summary: "Compiler pioneer",
+      experience: [], education: [], skills: [], languages: [],
+    };
+    const saveCvInput = vi.fn().mockResolvedValue({ id: "input-1" });
+    const importCv = vi.fn().mockResolvedValue({ cv: importedCv, importWorkflowId: "workflow-1" });
+    const renderCv = vi.fn().mockResolvedValue({ html: "<article>Imported CV</article>" });
+    const api = { saveCvInput, importCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CvEditor api={api} locale="en" messages={getMessages("en")} />
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("tab", { name: "Import CV" }));
+    await user.type(screen.getByLabelText("Or paste the CV text"), "Grace Hopper compiler experience");
+    await user.click(screen.getByRole("button", { name: "Import with AI" }));
+
+    expect(await screen.findByTitle("CV preview")).toHaveAttribute("srcdoc", "<article>Imported CV</article>");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a loading overlay while AI import runs", async () => {
+    const user = userEvent.setup();
+    const importedCv = {
+      personal_info: { full_name: "Grace Hopper" },
+      summary: "Compiler pioneer",
+      experience: [], education: [], skills: [], languages: [],
+    };
+    let resolveImport!: (value: { cv: typeof importedCv; importWorkflowId: string }) => void;
+    const saveCvInput = vi.fn().mockResolvedValue({ id: "input-1" });
+    const importCv = vi.fn(() => new Promise<{ cv: typeof importedCv; importWorkflowId: string }>((resolve) => {
+      resolveImport = resolve;
+    }));
+    const renderCv = vi.fn().mockResolvedValue({ html: "<article>Imported CV</article>" });
+    const api = { saveCvInput, importCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <CvEditor api={api} locale="en" messages={getMessages("en")} />
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("tab", { name: "Import CV" }));
+    await user.type(screen.getByLabelText("Or paste the CV text"), "Grace Hopper compiler experience");
+    await user.click(screen.getByRole("button", { name: "Import with AI" }));
+
+    await waitFor(() => expect(container.querySelector(".ai-loading-overlay")).not.toBeNull());
+    expect(container.querySelector(".ai-loading-overlay p")).toHaveTextContent("Building your CV...");
+
+    resolveImport({ cv: importedCv, importWorkflowId: "workflow-1" });
+
+    expect(await screen.findByTitle("CV preview")).toHaveAttribute("srcdoc", "<article>Imported CV</article>");
+    await waitFor(() => expect(container.querySelector(".ai-loading-overlay")).toBeNull());
+  });
 });

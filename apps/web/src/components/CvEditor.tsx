@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { resolveCvLanguage, type CvLanguage } from "@nomcci/cvmaker-domain";
+import { normalizeCvLinks, resolveCvLanguage, type CvData, type CvLanguage } from "@nomcci/cvmaker-domain";
 import type { CvmakerApi } from "../api/cvmaker";
 import type { Messages } from "../i18n/messages";
 import type { CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRecord } from "../types";
@@ -281,7 +281,11 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
   }
 
   function useSavedCv(record: SavedCvRecord) {
-    dispatch({ type: "loadSavedCv", cv: record.cv, html: record.html, template: record.template, style: record.style, language: record.language });
+    const cv: CvData = {
+      ...record.cv,
+      personal_info: { ...record.cv.personal_info, links: normalizeCvLinks(record.cv.personal_info.links) },
+    };
+    dispatch({ type: "loadSavedCv", cv, html: record.html, template: record.template, style: record.style, language: record.language });
     setCvName(record.name);
     setSavedCvId(record.id);
     setDocumentLanguage(record.language);
@@ -712,6 +716,14 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
           <AdminPanel api={api} messages={messages} locale={locale} userRole={userRole} />
         </div>
       </Sheet>
+      {(importCv.isPending || applyAi.isPending) && (
+        <div className="ai-loading-overlay" role="status">
+          <div className="ai-loading-card">
+            <span className="ai-loading-spinner" aria-hidden="true" />
+            <p>{importCv.isPending ? messages.importingCv : messages.applyingAi}</p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

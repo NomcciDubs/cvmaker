@@ -4,6 +4,7 @@ import {
   cvInputRequestSchema,
   importImproveRequestSchema,
   languageSchema,
+  linkSchema,
   pdfArchiveFilenameSchema,
   pdfQuotaSettingsSchema,
   pdfRequestSchema,
@@ -59,6 +60,24 @@ describe("portable HTTP contracts", () => {
     expect(importImproveRequestSchema.safeParse({ ...base, targetRole: "Engineer" }).success).toBe(true);
     expect(importImproveRequestSchema.safeParse({ ...base, instruction: "Improve the summary" }).success).toBe(true);
     expect(importImproveRequestSchema.safeParse({ ...base, importWorkflowId: "invalid", targetRole: "Engineer" }).success).toBe(false);
+  });
+
+  it("coerces bare link strings instead of rejecting the whole CV", () => {
+    expect(linkSchema.parse({ label: "Portfolio", url: "https://example.com" })).toEqual({
+      label: "Portfolio",
+      url: "https://example.com",
+    });
+    expect(linkSchema.parse("https://example.com/a")).toEqual({
+      label: "https://example.com/a",
+      url: "https://example.com/a",
+    });
+    expect(linkSchema.safeParse("").success).toBe(false);
+    expect(
+      renderCvRequestSchema.safeParse({
+        cv: { personal_info: { full_name: "Ada", links: ["https://example.com/a"] } },
+        ...renderOptions,
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts the 12 document languages and rejects unknown codes", () => {

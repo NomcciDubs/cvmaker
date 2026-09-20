@@ -1,4 +1,4 @@
-import type { CvData } from "@nomcci/cvmaker-domain";
+import { normalizeCvLinks, type CvData } from "@nomcci/cvmaker-domain";
 
 export function parseCvJson(text: string): CvData {
   const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
@@ -10,7 +10,7 @@ export function parseCvJson(text: string): CvData {
 export function normalizeCv(cv: CvData, sourceText: string): CvData {
   const languages = (cv.languages || []).filter((item) => item.name);
   return {
-    personal_info: { links: [], ...cv.personal_info },
+    personal_info: { ...cv.personal_info, links: normalizeCvLinks(cv.personal_info.links) },
     summary: cv.summary || "",
     experience: (cv.experience || []).filter((item) => item.role || item.company),
     education: (cv.education || [])

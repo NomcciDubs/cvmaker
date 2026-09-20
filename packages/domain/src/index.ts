@@ -67,6 +67,37 @@ export interface Link {
   url: string;
 }
 
+/**
+ * Coerces AI- or legacy-shaped link lists into Link objects. Bare strings
+ * become `{ label, url }` pairs (adding `https://` when the scheme is
+ * missing); entries without a usable URL are dropped.
+ */
+export function normalizeCvLinks(value: unknown): Link[] {
+  if (!Array.isArray(value)) return [];
+  const links: Link[] = [];
+  for (const item of value) {
+    if (typeof item === "string") {
+      const url = withScheme(item.trim());
+      if (url) links.push({ label: url, url });
+      continue;
+    }
+    if (item && typeof item === "object") {
+      const record = item as { label?: unknown; url?: unknown };
+      const label = typeof record.label === "string" ? record.label.trim() : "";
+      const url = typeof record.url === "string" ? withScheme(record.url.trim()) : "";
+      if (url) links.push({ label: label || url, url });
+    }
+  }
+  return links;
+}
+
+function withScheme(value: string): string {
+  if (!value) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+  if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(value)) return `https://${value}`;
+  return "";
+}
+
 export interface PersonalInfo {
   full_name: string;
   title?: string;

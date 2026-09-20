@@ -7,6 +7,7 @@ import {
   aiDailyLimitFor,
   cvLanguageInfo,
   isCvLanguage,
+  normalizeCvLinks,
   pdfDailyLimitFor,
   resolveCvLanguage,
 } from "./index";
@@ -41,6 +42,25 @@ describe("role quotas", () => {
       expect(entry.nameNative.trim()).not.toBe("");
       expect(entry.aliases.length).toBeGreaterThan(0);
     }
+  });
+
+  it("coerces AI- and legacy-shaped link lists into Link objects", () => {
+    expect(normalizeCvLinks(undefined)).toEqual([]);
+    expect(normalizeCvLinks("https://example.com")).toEqual([]);
+    expect(normalizeCvLinks([
+      "https://example.com/a",
+      "  example.com/b  ",
+      { label: "Portfolio", url: "https://example.com/c" },
+      { label: "", url: "" },
+      { label: "No URL" },
+      "not a url",
+      null,
+      42,
+    ])).toEqual([
+      { label: "https://example.com/a", url: "https://example.com/a" },
+      { label: "https://example.com/b", url: "https://example.com/b" },
+      { label: "Portfolio", url: "https://example.com/c" },
+    ]);
   });
 
   it("validates and resolves document languages with an English fallback", () => {

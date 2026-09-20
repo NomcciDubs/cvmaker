@@ -1,4 +1,4 @@
-import { CV_STYLES, CV_TEMPLATES, resolveCvLanguage } from "@nomcci/cvmaker-domain";
+import { CV_STYLES, CV_TEMPLATES, normalizeCvLinks, resolveCvLanguage } from "@nomcci/cvmaker-domain";
 import type { CvData, CvLanguage, CvStyle, CvTemplate } from "./types";
 import type { WizardStep } from "./wizard";
 
@@ -112,12 +112,13 @@ function normalizeDraftData(value: unknown): CvDraftData | null {
   ) return null;
 
   const documentLanguage = resolveCvLanguage(draft.documentLanguage ?? draft.cvLanguage);
+  const cv = draft.cv;
 
   return {
     step,
     maxStep: draft.maxStep,
     sourceMode: draft.sourceMode,
-    cv: draft.cv,
+    cv: { ...cv, personal_info: { ...cv.personal_info, links: normalizeCvLinks(cv.personal_info.links) } },
     html: typeof draft.html === "string" ? draft.html : "",
     template: draft.template as CvTemplate,
     style: draft.style as CvStyle,

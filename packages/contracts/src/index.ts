@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { CV_LANGUAGES, CV_SOURCE_TYPES, CV_STYLES, CV_TEMPLATES } from "@nomcci/cvmaker-domain";
+import { CV_LANGUAGES, CV_SOURCE_TYPES, CV_STYLES, CV_TEMPLATES, normalizeCvLinks } from "@nomcci/cvmaker-domain";
 
 const optionalText = z.string().trim().max(10_000).optional();
 const shortOptionalText = z.string().trim().max(500).optional();
@@ -10,10 +10,17 @@ export const languageSchema = z.enum(CV_LANGUAGES);
 export const cvStyleSchema = z.enum(CV_STYLES);
 export const cvTemplateSchema = z.enum(CV_TEMPLATES);
 
-export const linkSchema = z.object({
+const linkObjectSchema = z.object({
   label: z.string().trim().max(200),
   url: z.url().max(2_048),
 });
+
+// Tolerates AI- or legacy-shaped payloads: bare URL strings are coerced to
+// `{ label, url }` instead of rejecting the whole CV at the boundary.
+export const linkSchema = z.union([
+  linkObjectSchema,
+  z.string().trim().min(1).max(2_048).transform((value) => normalizeCvLinks([value])[0] ?? { label: value, url: value }),
+]);
 
 export const personalInfoSchema = z.object({
   full_name: z.string().trim().min(1).max(200),
