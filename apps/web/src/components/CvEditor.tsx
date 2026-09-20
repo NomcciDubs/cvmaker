@@ -12,7 +12,7 @@ import { AdminPanel } from "./AdminPanel";
 import { CvForm } from "./CvForm";
 import { ApplicationTracker } from "./ApplicationTracker";
 import { CvLibrary } from "./CvLibrary";
-import { CvPreview, type PreviewZoom } from "./CvPreview";
+import { CvPreview, type PreviewMode } from "./CvPreview";
 import { PdfArchives, PdfExportButton } from "./PdfArchives";
 import { PhotoManager } from "./PhotoManager";
 import { FieldTile } from "./ui/FieldTile";
@@ -57,7 +57,7 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
   const [draftReady, setDraftReady] = useState(false);
   const [draftError, setDraftError] = useState(false);
   const [draftUserId, setDraftUserId] = useState<string | null>(null);
-  const [previewZoom, setPreviewZoom] = useState<PreviewZoom>("fit");
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("actual");
   const [stageDirection, setStageDirection] = useState<"forward" | "back">("forward");
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const previousStepRef = useRef<WizardStep>(state.step);
@@ -583,11 +583,11 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
                 <Segmented
                   className="zoom-switch"
                   ariaLabel={messages.previewZoomLabel}
-                  value={previewZoom}
-                  onChange={setPreviewZoom}
+                  value={previewMode}
+                  onChange={setPreviewMode}
                   options={[
-                    { value: "fit", label: messages.zoomFit },
                     { value: "actual", label: messages.zoomActual },
+                    { value: "fullscreen", label: messages.fullscreen },
                   ]}
                 />
               </div>
@@ -595,7 +595,15 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
                 <StaleNotice messages={messages} regenerating={render.isPending} onRegenerate={regenerate} />
               )}
               {render.isError && <p className="error" role="alert">{messages.renderError}</p>}
-              <CvPreview html={state.html} title={messages.preview} zoom={previewZoom} emptyLabel={messages.emptyPreview} />
+              <CvPreview
+                html={state.html}
+                title={messages.preview}
+                mode={previewMode}
+                emptyLabel={messages.emptyPreview}
+                fullscreenLabel={messages.fullscreenPreview}
+                exitFullscreenLabel={messages.exitFullscreen}
+                onExitFullscreen={() => setPreviewMode("actual")}
+              />
               <WizardActions
                 sticky
                 onBack={() => transitionToStep("source")}
@@ -678,7 +686,27 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
                   </div>
                 </form>
                 <div className="final-preview">
-                  <CvPreview html={state.html} title={messages.finalPreview} zoom={previewZoom} emptyLabel={messages.emptyPreview} />
+                  <div className="preview-toolbar">
+                    <span className="preview-toolbar-label">{messages.previewZoomLabel}</span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-haspopup="dialog"
+                      onClick={() => setPreviewMode("fullscreen")}
+                    >
+                      <Icon name="expand" size={16} />
+                      {messages.fullscreen}
+                    </button>
+                  </div>
+                  <CvPreview
+                    html={state.html}
+                    title={messages.finalPreview}
+                    mode={previewMode}
+                    emptyLabel={messages.emptyPreview}
+                    fullscreenLabel={messages.fullscreenPreview}
+                    exitFullscreenLabel={messages.exitFullscreen}
+                    onExitFullscreen={() => setPreviewMode("actual")}
+                  />
                 </div>
               </div>
               <WizardActions onBack={() => transitionToStep("preview")} messages={messages} />

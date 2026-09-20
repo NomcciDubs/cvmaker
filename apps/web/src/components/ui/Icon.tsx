@@ -21,6 +21,7 @@ export type IconName =
   | "menu"
   | "external"
   | "pencil"
+  | "expand"
   | "shield";
 
 const PATHS: Record<IconName, string> = {
@@ -44,6 +45,7 @@ const PATHS: Record<IconName, string> = {
   menu: "M4 7h16M4 12h16M4 17h16",
   external: "M14 4h6v6M20 4l-9 9M18 14v5H5V6h5",
   pencil: "M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 6l3 3",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   shield: "M12 3l7 3v5c0 4.4-2.9 8.1-7 10-4.1-1.9-7-5.6-7-10V6l7-3Z",
 };
 

@@ -1,37 +1,36 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { A4_HEIGHT, A4_WIDTH, CvPreview, previewScale } from "./CvPreview";
+import { A4_HEIGHT, A4_WIDTH, CvPreview, previewScaleForBox } from "./CvPreview";
 
-describe("previewScale", () => {
-  it("caps fit mode at 1 and shrinks proportionally", () => {
-    expect(previewScale(1600, "fit")).toBe(1);
-    expect(previewScale(A4_WIDTH, "fit")).toBe(1);
-    expect(previewScale(397, "fit")).toBeCloseTo(0.5, 5);
-  });
-
+describe("previewScaleForBox", () => {
   it("renders actual mode without scaling", () => {
-    expect(previewScale(320, "actual")).toBe(1);
-    expect(previewScale(1600, "actual")).toBe(1);
+    expect(previewScaleForBox(320, 400, "actual")).toBe(1);
+    expect(previewScaleForBox(1600, 2000, "actual")).toBe(1);
   });
 
-  it("falls back to 1 for invalid widths", () => {
-    expect(previewScale(0, "fit")).toBe(1);
-    expect(previewScale(Number.NaN, "fit")).toBe(1);
+  it("fits fullscreen mode to both width and height", () => {
+    expect(previewScaleForBox(A4_WIDTH, A4_HEIGHT, "fullscreen")).toBe(1);
+    expect(previewScaleForBox(A4_WIDTH / 2, A4_HEIGHT, "fullscreen")).toBeCloseTo(0.5, 5);
+    expect(previewScaleForBox(A4_WIDTH, A4_HEIGHT / 2, "fullscreen")).toBeCloseTo(0.5, 5);
+  });
+
+  it("falls back to 1 for invalid measurements", () => {
+    expect(previewScaleForBox(0, 0, "fullscreen")).toBe(1);
+    expect(previewScaleForBox(Number.NaN, 400, "fullscreen")).toBe(1);
   });
 });
 
-function mockResizeObserver(width: number) {
-  const observe = vi.fn();
+function mockResizeObserver(width: number, height: number) {
   class MockResizeObserver {
     private readonly callback: ResizeObserverCallback;
     constructor(callback: ResizeObserverCallback) {
       this.callback = callback;
     }
     observe = () => {
-      observe();
       this.callback(
-        [{ contentRect: { width } } as unknown as ResizeObserverEntry],
+        [{ contentRect: { width, height } } as unknown as ResizeObserverEntry],
         this as unknown as ResizeObserver,
       );
     };
@@ -39,7 +38,6 @@ function mockResizeObserver(width: number) {
     disconnect = vi.fn();
   }
   vi.stubGlobal("ResizeObserver", MockResizeObserver);
-  return observe;
 }
 
 afterEach(() => {
@@ -47,39 +45,88 @@ afterEach(() => {
 });
 
 describe("CvPreview", () => {
-  it("keeps the A4 document sandboxed with a localized title", () => {
-    mockResizeObserver(1200);
-    render(<CvPreview html="<article>CV</article>" title="CV preview" zoom="fit" emptyLabel="Empty" />);
+  it("keeps the A4 document sandboxed at real size in 100% mode", () => {
+    render(
+      <CvPreview
+        html="<article>CV</article>"
+        title="CV preview"
+        mode="actual"
+        emptyLabel="Empty"
+        fullscreenLabel="Full screen"
+        exitFullscreenLabel="Exit"
+        onExitFullscreen={() => {}}
+      />,
+    );
 
     const frame = screen.getByTitle("CV preview");
     expect(frame).toHaveAttribute("sandbox", "");
     expect(frame).toHaveAttribute("srcdoc", "<article>CV</article>");
-  });
-
-  it("scales the fixed A4 viewport instead of cropping it", () => {
-    mockResizeObserver(397);
-    const { container } = render(<CvPreview html="<article>CV</article>" title="CV preview" zoom="fit" emptyLabel="Empty" />);
-
-    const scaler = container.querySelector(".cv-preview-scaler") as HTMLElement;
-    expect(scaler.style.width).toBe("397px");
-    expect(scaler.style.height).toBe(`${A4_HEIGHT * 0.5}px`);
-    const frame = screen.getByTitle("CV preview") as HTMLElement;
-    expect(frame.style.transform).toBe("scale(0.5)");
-  });
-
-  it("renders full size with outer scroll in actual mode", () => {
-    mockResizeObserver(397);
-    const { container } = render(<CvPreview html="<article>CV</article>" title="CV preview" zoom="actual" emptyLabel="Empty" />);
-
-    const scaler = container.querySelector(".cv-preview-scaler") as HTMLElement;
-    expect(scaler.style.width).toBe(`${A4_WIDTH}px`);
-    const frame = screen.getByTitle("CV preview") as HTMLElement;
     expect(frame.style.transform).toBe("scale(1)");
+    const scaler = frame.closest(".cv-preview-scaler") as HTMLElement;
+    expect(scaler.style.width).toBe(`${A4_WIDTH}px`);
+    expect(scaler.style.height).toBe(`${A4_HEIGHT}px`);
+  });
+
+  it("opens a fullscreen dialog that fits the viewport and can be closed", async () => {
+    mockResizeObserver(A4_WIDTH / 2, A4_HEIGHT / 2);
+    const onExit = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CvPreview
+        html="<article>CV</article>"
+        title="CV preview"
+        mode="fullscreen"
+        emptyLabel="Empty"
+        fullscreenLabel="Full-screen CV preview"
+        exitFullscreenLabel="Exit full screen"
+        onExitFullscreen={onExit}
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Full-screen CV preview" });
+    expect(dialog).toBeInTheDocument();
+    expect(document.documentElement).toHaveClass("scroll-locked");
+
+    const frame = screen.getByTitle("CV preview");
+    await waitFor(() => expect(frame.style.transform).toBe("scale(0.5)"));
+
+    await user.click(screen.getByRole("button", { name: "Exit full screen" }));
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the fullscreen dialog with Escape", async () => {
+    mockResizeObserver(A4_WIDTH, A4_HEIGHT);
+    const onExit = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CvPreview
+        html="<article>CV</article>"
+        title="CV preview"
+        mode="fullscreen"
+        emptyLabel="Empty"
+        fullscreenLabel="Full-screen CV preview"
+        exitFullscreenLabel="Exit full screen"
+        onExitFullscreen={onExit}
+      />,
+    );
+
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    expect(onExit).toHaveBeenCalledTimes(1);
   });
 
   it("shows a localized empty state without an iframe", () => {
-    mockResizeObserver(800);
-    render(<CvPreview html="" title="CV preview" zoom="fit" emptyLabel="Completa tu nombre" />);
+    render(
+      <CvPreview
+        html=""
+        title="CV preview"
+        mode="actual"
+        emptyLabel="Completa tu nombre"
+        fullscreenLabel="Full screen"
+        exitFullscreenLabel="Exit"
+        onExitFullscreen={() => {}}
+      />,
+    );
 
     expect(screen.getByText("Completa tu nombre")).toBeInTheDocument();
     expect(screen.queryByTitle("CV preview")).toBeNull();
