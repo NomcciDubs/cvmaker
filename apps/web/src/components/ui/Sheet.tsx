@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
+import { lockScroll, unlockScroll } from "./scroll-lock";
 
 export type SheetVariant = "center" | "bottom" | "side";
 
@@ -44,10 +45,17 @@ export function Sheet({ open, onClose, title, description, variant = "center", c
   const titleId = useId();
   const descriptionId = useId();
 
+  const onCloseRef = useRef(onClose);
+  const dismissableRef = useRef(dismissable);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    dismissableRef.current = dismissable;
+  });
+
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.stopPropagation();
-      if (dismissable) onClose();
+      if (dismissableRef.current) onCloseRef.current();
       return;
     }
     if (event.key !== "Tab" || !panelRef.current) return;
@@ -62,21 +70,21 @@ export function Sheet({ open, onClose, title, description, variant = "center", c
       event.preventDefault();
       first.focus();
     }
-  }, [onClose, dismissable]);
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
+    lockScroll();
     restoreFocus.current = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     const panel = panelRef.current;
     const autoFocus = panel?.querySelector<HTMLElement>("[data-autofocus]") ?? panel;
-    window.setTimeout(() => autoFocus?.focus(), 0);
+    const frame = requestAnimationFrame(() => autoFocus?.focus({ preventScroll: true }));
     document.addEventListener("keydown", handleKeyDown, true);
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown, true);
-      document.body.style.overflow = previousOverflow;
-      restoreFocus.current?.focus?.();
+      unlockScroll();
+      restoreFocus.current?.focus?.({ preventScroll: true });
     };
   }, [visible, handleKeyDown]);
 

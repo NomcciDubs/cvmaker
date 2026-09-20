@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
 
@@ -28,6 +28,7 @@ export function FieldTile({
   doneLabel,
 }: FieldTileProps) {
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -54,7 +55,7 @@ export function FieldTile({
       </button>
       <Sheet
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         title={label}
         description={hint}
         variant="center"

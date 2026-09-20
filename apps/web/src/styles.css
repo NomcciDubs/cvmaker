@@ -1111,7 +1111,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .allowance-note { margin: 0 0 1rem; padding: .7rem 1rem; border-left: 3px solid var(--brand); border-radius: var(--r-md); background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--ink-2); font-size: .82rem; line-height: 1.5; }
 
 /* ---------- Sheet / modal ---------- */
-.sheet-portal { position: fixed; inset: 0; z-index: 50; display: grid; }
+html.scroll-locked,
+html.scroll-locked body { overflow: hidden; overscroll-behavior: none; }
+html.scroll-locked body { position: fixed; left: 0; right: 0; width: 100%; }
+.sheet-portal { position: fixed; inset: 0; z-index: 50; display: grid; overscroll-behavior: none; }
 .sheet-backdrop {
   position: absolute;
   inset: 0;
@@ -1119,6 +1122,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   backdrop-filter: blur(3px);
   opacity: 0;
   transition: opacity var(--dur-2) var(--ease);
+  touch-action: none;
 }
 .sheet-panel {
   position: relative;
@@ -1169,7 +1173,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 .sheet-heading h2 { font-size: 1.2rem; }
 .sheet-heading p { margin-top: .25rem; color: var(--ink-3); font-size: .82rem; max-width: 46ch; }
-.sheet-body { padding: 1.25rem; overflow: auto; overscroll-behavior: contain; }
+.sheet-body { padding: 1.25rem; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
 /* ---------- AI loading overlay ---------- */
 .ai-loading-overlay {
@@ -1279,8 +1283,9 @@ footer.app-footer {
   .source-tabs .segmented-item { min-width: 0; flex: 1; }
   .library-item { flex-direction: column; align-items: stretch; }
   .library-item-actions { justify-content: flex-end; }
-  .sheet-panel[data-variant="center"] { width: 100vw; max-height: 92vh; border-radius: var(--r-xl) var(--r-xl) 0 0; align-self: end; transform: translateY(24px); }
-  .sheet-panel[data-variant="side"] { align-self: end; width: 100vw; max-height: 92vh; border-radius: var(--r-xl) var(--r-xl) 0 0; transform: translateY(24px); }
+  .sheet-panel[data-variant="center"] { width: 100vw; max-height: 92vh; max-height: 92dvh; border-radius: var(--r-xl) var(--r-xl) 0 0; align-self: end; transform: translateY(24px); }
+  .sheet-panel[data-variant="side"] { align-self: end; width: 100vw; max-height: 92vh; max-height: 92dvh; border-radius: var(--r-xl) var(--r-xl) 0 0; transform: translateY(24px); }
+  .sheet-foot { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 420px) {
