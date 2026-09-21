@@ -184,4 +184,21 @@ describe("PortableCvAiService streaming", () => {
       { phase: "validating", characters: json.length },
     ]);
   });
+
+  it("falls back to a non-streaming call when the provider rejects streaming", async () => {
+    const json = JSON.stringify(cv);
+    const complete = vi.fn(async () => json);
+    const model: ChatModel = {
+      complete,
+      stream: async function* () {
+        throw new Error("Chat model error 400: stream not supported");
+      },
+    };
+
+    const result = await new PortableCvAiService(model, { repairSuspiciousExperience: false })
+      .import("source", "en", () => {});
+
+    expect(result.personal_info.full_name).toBe("Ada Lovelace");
+    expect(complete).toHaveBeenCalledOnce();
+  });
 });

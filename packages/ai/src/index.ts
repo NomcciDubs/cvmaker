@@ -52,13 +52,19 @@ export class PortableCvAiService implements CvAiService {
     if (onProgress && this.model.stream) {
       let text = "";
       let tokens: number | undefined;
-      for await (const chunk of this.model.stream(request)) {
-        if (chunk.content) text += chunk.content;
-        if (typeof chunk.tokens === "number") tokens = chunk.tokens;
-        onProgress({ phase, characters: text.length, ...(tokens === undefined ? {} : { tokens }) });
+      try {
+        for await (const chunk of this.model.stream(request)) {
+          if (chunk.content) text += chunk.content;
+          if (typeof chunk.tokens === "number") tokens = chunk.tokens;
+          onProgress({ phase, characters: text.length, ...(tokens === undefined ? {} : { tokens }) });
+        }
+        onProgress({ phase: "validating", characters: text.length, ...(tokens === undefined ? {} : { tokens }) });
+        return text;
+      } catch (error) {
+        // Providers that reject streaming (e.g. stream with json_object) fall
+        // back to a single non-streaming call while nothing was generated yet.
+        if (text.length > 0) throw error;
       }
-      onProgress({ phase: "validating", characters: text.length, ...(tokens === undefined ? {} : { tokens }) });
-      return text;
     }
 
     const text = await this.model.complete(request);
