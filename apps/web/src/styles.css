@@ -91,6 +91,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-padding-bottom: 6rem;
+  overflow-x: clip;
 }
 
 body {
@@ -518,6 +519,7 @@ img { max-width: 100%; display: block; }
 
 /* ---------- Workspace / wizard ---------- */
 .workspace {
+  width: 100%;
   max-width: var(--shell-w);
   margin: 0 auto clamp(3rem, 7vw, 5rem);
   padding: 0 clamp(1rem, 4vw, 2.5rem) 1rem;
@@ -598,13 +600,15 @@ img { max-width: 100%; display: block; }
 .wizard-step:not([data-active]):hover:not(:disabled) { color: var(--ink); }
 .wizard-step[data-state="done"]:hover:not(:disabled) { color: var(--brand); }
 
-.step-stage { position: relative; }
+.step-stage { position: relative; min-width: 0; max-width: 100%; }
 .step-panel {
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
   background: var(--surface);
   box-shadow: var(--shadow-1);
   overflow: clip;
+  min-width: 0;
+  max-width: 100%;
 }
 .step-stage[data-direction="forward"] .step-panel { animation: stage-in-forward 220ms var(--ease) both; }
 .step-stage[data-direction="back"] .step-panel { animation: stage-in-back 220ms var(--ease) both; }
@@ -950,7 +954,16 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .preview-panel { background: var(--surface); min-width: 0; }
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .preview-toolbar-label { color: var(--ink-3); font-size: .76rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.zoom-switch .segmented-item { min-width: 64px; }
+.zoom-switch { flex: 1 1 22rem; max-width: 34rem; }
+.zoom-switch .segmented-item {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: .6rem 1.25rem;
+  font-size: .9rem;
+  letter-spacing: .01em;
+}
+.final-preview .preview-toolbar .btn { min-height: 40px; padding: .6rem 1.25rem; font-size: .9rem; }
 .preview-stale { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .preview-stale span { flex: 1 1 18rem; }
 .cv-preview {
@@ -958,12 +971,14 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  contain: inline-size;
   min-height: min(560px, 60vh);
   padding: clamp(.75rem, 3vw, 3.5rem);
   background: var(--surface-3);
   border-radius: var(--r-lg);
   border: 1px solid var(--line);
   overflow: auto;
+  overflow-x: auto;
   overscroll-behavior: contain;
 }
 .cv-preview-scaler { position: relative; margin-inline: auto; }
@@ -1377,6 +1392,11 @@ footer.app-footer {
   .session-card { padding-left: .4rem; }
   .text-link { font-size: .74rem; padding: .35rem .4rem; }
   .masthead-step { text-align: left; }
+}
+
+@media (max-width: 480px) {
+  .zoom-switch { flex: 1 1 100%; max-width: none; }
+  .zoom-switch .segmented-item { padding: .55rem .5rem; font-size: .8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
