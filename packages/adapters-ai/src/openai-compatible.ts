@@ -1,6 +1,7 @@
 import type { ChatModel, ChatModelRequest, ChatModelStreamChunk } from "@nomcci/cvmaker-application";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
 const MAX_ERROR_TEXT = 1_024;
 
 export interface OpenAiCompatibleChatModelOptions {
@@ -77,7 +78,7 @@ export class OpenAiCompatibleChatModel implements ChatModel {
 
   async *stream(request: ChatModelRequest): AsyncIterable<ChatModelStreamChunk> {
     const controller = new AbortController();
-    const idleMs = Math.min(this.timeoutMs, 15_000);
+    const idleMs = Math.min(this.timeoutMs, DEFAULT_IDLE_TIMEOUT_MS);
     let abortReason: "idle" | "total" | null = null;
     let idleTimer = setTimeout(() => { abortReason = "idle"; controller.abort(); }, idleMs);
     const totalTimer = setTimeout(() => { abortReason = "total"; controller.abort(); }, this.timeoutMs);

@@ -13,15 +13,27 @@ export interface SseEvent {
   data: string;
 }
 
+export interface StreamHandlers {
+  onEvent: (event: SseEvent) => void;
+  /** Fired once the stream has been idle long enough to warn the user. */
+  onStall?: () => void;
+  signal?: AbortSignal;
+}
+
 export interface ApiClient {
   get<T>(path: string): Promise<T>;
   post<TResponse, TBody>(path: string, body: TBody): Promise<TResponse>;
   delete(path: string): Promise<void>;
-  postEventStream<TBody>(path: string, body: TBody, onEvent: (event: SseEvent) => void, signal?: AbortSignal): Promise<void>;
+  postEventStream<TBody>(path: string, body: TBody, handlers: StreamHandlers): Promise<void>;
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
-const STREAM_IDLE_TIMEOUT_MS = 25_000;
+/** Warning shown in the loader after this long without any progress event. */
+export const STREAM_IDLE_WARNING_MS = 15_000;
+/** Hard failure after this long without any progress event. */
+export const STREAM_IDLE_TIMEOUT_MS = 30_000;
+/** Hard failure for a stream that keeps talking but never finishes. */
+export const STREAM_TOTAL_TIMEOUT_MS = 120_000;
 
 export function createApiClient(apiBase = ""): ApiClient {
   const base = normalizeApiBase(apiBase);
@@ -50,15 +62,32 @@ export function createApiClient(apiBase = ""): ApiClient {
     }
   }
 
-  async function postEventStream<TBody>(path: string, body: TBody, onEvent: (event: SseEvent) => void, signal?: AbortSignal): Promise<void> {
+  async function postEventStream<TBody>(path: string, body: TBody, handlers: StreamHandlers): Promise<void> {
     const controller = new AbortController();
-    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const external = handlers.signal;
     const abort = () => controller.abort();
+    if (external) {
+      if (external.aborted) controller.abort();
+      else external.addEventListener("abort", abort, { once: true });
+    }
+
+    let stalled = false;
+    let timedOut = false;
+    let warningTimer: ReturnType<typeof setTimeout> | undefined;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const totalTimer = setTimeout(() => { timedOut = true; controller.abort(); }, STREAM_TOTAL_TIMEOUT_MS);
+
+    const aborted = new Promise<never>((_resolve, reject) => {
+      controller.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    });
+    void aborted.catch(() => undefined);
+
     const resetIdle = () => {
+      clearTimeout(warningTimer);
       clearTimeout(idleTimer);
-      idleTimer = setTimeout(abort, STREAM_IDLE_TIMEOUT_MS);
+      warningTimer = setTimeout(() => handlers.onStall?.(), STREAM_IDLE_WARNING_MS);
+      idleTimer = setTimeout(() => { stalled = true; controller.abort(); }, STREAM_IDLE_TIMEOUT_MS);
     };
-    signal?.addEventListener("abort", abort, { once: true });
 
     try {
       const response = await fetch(`${base}${path}`, {
@@ -79,7 +108,7 @@ export function createApiClient(apiBase = ""): ApiClient {
       const decoder = new TextDecoder();
       let buffer = "";
       for (;;) {
-        const { value, done } = await reader.read();
+        const { value, done } = await Promise.race([reader.read(), aborted]);
         if (done) break;
         resetIdle();
         buffer += decoder.decode(value, { stream: true });
@@ -88,19 +117,23 @@ export function createApiClient(apiBase = ""): ApiClient {
           const block = buffer.slice(0, separator);
           buffer = buffer.slice(separator + 2);
           const parsed = parseSseBlock(block);
-          if (parsed) onEvent(parsed);
+          if (parsed) handlers.onEvent(parsed);
           separator = buffer.indexOf("\n\n");
         }
       }
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw new ApiError(signal?.aborted ? "Request aborted" : "Stream stalled", 0);
+        if (timedOut) throw new ApiError("ai_timeout", 0);
+        if (stalled) throw new ApiError("ai_stalled", 0);
+        throw new ApiError(external?.aborted ? "Request aborted" : "Stream stalled", 0);
       }
       throw error;
     } finally {
+      clearTimeout(warningTimer);
       clearTimeout(idleTimer);
-      signal?.removeEventListener("abort", abort);
+      clearTimeout(totalTimer);
+      external?.removeEventListener("abort", abort);
     }
   }
 

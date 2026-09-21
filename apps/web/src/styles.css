@@ -1278,6 +1278,7 @@ html.scroll-locked body { position: fixed; left: 0; right: 0; width: 100%; }
   background: var(--accent);
   transition: width 200ms var(--ease);
 }
+.ai-stall-warning { color: var(--danger); font-size: .82rem; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   .ai-progress-fill { transition: none; }
 }

@@ -1,4 +1,4 @@
-import type { ApiClient } from "./client";
+import { ApiError, type ApiClient } from "./client";
 import type { SavedCvInput } from "@nomcci/cvmaker-domain";
 import type { AdminMetrics, AiUsage, ApplicationRecord, ApplicationSnapshot, CvInputRecord, ExportPdfResponse, ImportCvRequest, ImportCvResponse, ImportImproveRequest, ModifyCvRequest, PdfArchiveItem, PdfQuotaSettings, PhotoRecord, RenderCvRequest, SavedCvRecord, SavedPhoto, Session } from "../types";
 
@@ -10,6 +10,7 @@ export interface AiProgress {
 
 export interface AiStreamHandlers {
   onProgress?: (progress: AiProgress) => void;
+  onStall?: () => void;
   signal?: AbortSignal;
 }
 
@@ -23,16 +24,27 @@ export class AiStreamError extends Error {
 async function runAiStream<TDone>(client: ApiClient, path: string, body: unknown, handlers: AiStreamHandlers): Promise<TDone> {
   let result: TDone | undefined;
   let failureCode: string | undefined;
-  await client.postEventStream(path, body, (event) => {
-    if (event.event === "progress") {
-      const data = parseJson(event.data) as AiProgress | null;
-      if (data) handlers.onProgress?.(data);
-    } else if (event.event === "done") {
-      result = (parseJson(event.data) as TDone | null) ?? undefined;
-    } else if (event.event === "error") {
-      failureCode = (parseJson(event.data) as { code?: string } | null)?.code ?? "ai_error";
+  try {
+    await client.postEventStream(path, body, {
+      onEvent: (event) => {
+        if (event.event === "progress") {
+          const data = parseJson(event.data) as AiProgress | null;
+          if (data) handlers.onProgress?.(data);
+        } else if (event.event === "done") {
+          result = (parseJson(event.data) as TDone | null) ?? undefined;
+        } else if (event.event === "error") {
+          failureCode = (parseJson(event.data) as { code?: string } | null)?.code ?? "ai_error";
+        }
+      },
+      onStall: handlers.onStall,
+      signal: handlers.signal,
+    });
+  } catch (error) {
+    if (error instanceof ApiError && (error.message === "ai_timeout" || error.message === "ai_stalled")) {
+      throw new AiStreamError(error.message);
     }
-  }, handlers.signal);
+    throw error;
+  }
   if (failureCode) throw new AiStreamError(failureCode);
   if (result === undefined) throw new AiStreamError("ai_error");
   return result;

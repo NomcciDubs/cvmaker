@@ -76,11 +76,31 @@ describe("createApiClient", () => {
 
     const client = createApiClient("");
     const events: Array<{ event: string; data: string }> = [];
-    await client.postEventStream("/api/cv/import", { description: "x" }, (event) => events.push(event));
+    await client.postEventStream("/api/cv/import", { description: "x" }, { onEvent: (event) => events.push(event) });
 
     expect(events).toEqual([
       { event: "progress", data: '{"phase":"generating","characters":10}' },
       { event: "done", data: '{"cv":{"personal_info":{}}}' },
     ]);
+  });
+
+  it("warns after 15s idle and fails after 30s without stream progress", async () => {
+    vi.useFakeTimers();
+    try {
+      const body = new ReadableStream<Uint8Array>({ start() {} });
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } })));
+
+      const client = createApiClient("");
+      const onStall = vi.fn();
+      const pending = client.postEventStream("/api/cv/import", { description: "x" }, { onEvent: () => {}, onStall });
+      const assertion = expect(pending).rejects.toMatchObject({ name: "ApiError", message: "ai_stalled" });
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(onStall).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(15_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
