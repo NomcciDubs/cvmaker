@@ -2,6 +2,50 @@ import type { ApiClient } from "./client";
 import type { SavedCvInput } from "@nomcci/cvmaker-domain";
 import type { AdminMetrics, AiUsage, ApplicationRecord, ApplicationSnapshot, CvInputRecord, ExportPdfResponse, ImportCvRequest, ImportCvResponse, ImportImproveRequest, ModifyCvRequest, PdfArchiveItem, PdfQuotaSettings, PhotoRecord, RenderCvRequest, SavedCvRecord, SavedPhoto, Session } from "../types";
 
+export interface AiProgress {
+  phase: "generating" | "repairing" | "validating";
+  characters: number;
+  tokens?: number;
+}
+
+export interface AiStreamHandlers {
+  onProgress?: (progress: AiProgress) => void;
+  signal?: AbortSignal;
+}
+
+export class AiStreamError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "AiStreamError";
+  }
+}
+
+async function runAiStream<TDone>(client: ApiClient, path: string, body: unknown, handlers: AiStreamHandlers): Promise<TDone> {
+  let result: TDone | undefined;
+  let failureCode: string | undefined;
+  await client.postEventStream(path, body, (event) => {
+    if (event.event === "progress") {
+      const data = parseJson(event.data) as AiProgress | null;
+      if (data) handlers.onProgress?.(data);
+    } else if (event.event === "done") {
+      result = (parseJson(event.data) as TDone | null) ?? undefined;
+    } else if (event.event === "error") {
+      failureCode = (parseJson(event.data) as { code?: string } | null)?.code ?? "ai_error";
+    }
+  }, handlers.signal);
+  if (failureCode) throw new AiStreamError(failureCode);
+  if (result === undefined) throw new AiStreamError("ai_error");
+  return result;
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 export function createCvmakerApi(client: ApiClient) {
   return {
     loginForDevelopment: () => client.post<{ authenticated: boolean }, Record<string, never>>("/api/dev/login", {}),
@@ -9,9 +53,15 @@ export function createCvmakerApi(client: ApiClient) {
     getSession: () => client.get<Session>("/api/me"),
     renderCv: (body: RenderCvRequest) => client.post<{ html: string }, RenderCvRequest>("/api/cv/render", body),
     importCv: (body: ImportCvRequest) => client.post<ImportCvResponse, ImportCvRequest>("/api/cv/import", body),
+    streamImportCv: (body: ImportCvRequest, handlers: AiStreamHandlers = {}) =>
+      runAiStream<ImportCvResponse>(client, "/api/cv/import", body, handlers),
     modifyCv: (body: ModifyCvRequest) => client.post<{ cv: ModifyCvRequest["cv"] }, ModifyCvRequest>("/api/cv/modify", body),
+    streamModifyCv: (body: ModifyCvRequest, handlers: AiStreamHandlers = {}) =>
+      runAiStream<{ cv: ModifyCvRequest["cv"] }>(client, "/api/cv/modify", body, handlers),
     improveImportedCv: (body: ImportImproveRequest) =>
       client.post<{ cv: ModifyCvRequest["cv"]; importWorkflowId: null }, ImportImproveRequest>("/api/cv/import-improve", body),
+    streamImproveImportedCv: (body: ImportImproveRequest, handlers: AiStreamHandlers = {}) =>
+      runAiStream<{ cv: ModifyCvRequest["cv"]; importWorkflowId: null }>(client, "/api/cv/import-improve", body, handlers),
     saveCvInput: (body: { name?: string; content: string }) =>
       client.post<{ id: string }, { name?: string; content: string }>("/api/cv-inputs", body),
     listCvInputs: () => client.get<{ inputs: CvInputRecord[] }>("/api/cv-inputs"),

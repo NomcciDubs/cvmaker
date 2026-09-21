@@ -60,9 +60,9 @@ describe("CvEditor", () => {
       experience: [], education: [], skills: [], languages: [],
     };
     const saveCvInput = vi.fn().mockResolvedValue({ id: "input-1" });
-    const importCv = vi.fn().mockResolvedValue({ cv: importedCv, importWorkflowId: "workflow-1" });
+    const streamImportCv = vi.fn().mockResolvedValue({ cv: importedCv, importWorkflowId: "workflow-1" });
     const renderCv = vi.fn().mockResolvedValue({ html: "<article>Imported CV</article>" });
-    const api = { saveCvInput, importCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const api = { saveCvInput, streamImportCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 
     render(
@@ -78,8 +78,8 @@ describe("CvEditor", () => {
 
     expect(await screen.findByTitle("CV preview")).toHaveAttribute("srcdoc", "<article>Imported CV</article>");
     expect(saveCvInput).toHaveBeenCalledWith({ content: "Grace Hopper compiler experience", name: undefined });
-    expect(importCv).toHaveBeenCalledWith({ description: "Grace Hopper compiler experience", language: "en" });
-    expect(saveCvInput.mock.invocationCallOrder[0]).toBeLessThan(importCv.mock.invocationCallOrder[0]!);
+    expect(streamImportCv).toHaveBeenCalledWith({ description: "Grace Hopper compiler experience", language: "en" }, expect.anything());
+    expect(saveCvInput.mock.invocationCallOrder[0]).toBeLessThan(streamImportCv.mock.invocationCallOrder[0]!);
     expect(renderCv).toHaveBeenCalledWith(expect.objectContaining({ cv: importedCv, style: "sidebar_green" }));
   });
 
@@ -90,8 +90,8 @@ describe("CvEditor", () => {
       .mockResolvedValueOnce({ html: "<article>Original</article>" })
       .mockResolvedValueOnce({ html: "<article>Improved</article>" })
       .mockResolvedValueOnce({ html: "<article>Original again</article>" });
-    const modifyCv = vi.fn().mockResolvedValue({ cv: improvedCv });
-    const api = { renderCv, modifyCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const streamModifyCv = vi.fn().mockResolvedValue({ cv: improvedCv });
+    const api = { renderCv, streamModifyCv, getSession: vi.fn() } as unknown as CvmakerApi;
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 
     render(
@@ -109,10 +109,10 @@ describe("CvEditor", () => {
     await user.click(screen.getByRole("button", { name: "Apply with AI" }));
 
     await waitFor(() => expect(screen.getByTitle("Final CV preview")).toHaveAttribute("srcdoc", "<article>Improved</article>"));
-    expect(modifyCv).toHaveBeenCalledWith(expect.objectContaining({
+    expect(streamModifyCv).toHaveBeenCalledWith(expect.objectContaining({
       instruction: "Tailor this CV for the target role: Platform Engineer.\nEmphasize reliability",
       language: "en",
-    }));
+    }), expect.anything());
 
     await user.click(screen.getByRole("button", { name: "Undo AI result" }));
     await waitFor(() => expect(screen.getByTitle("Final CV preview")).toHaveAttribute("srcdoc", "<article>Original again</article>"));
@@ -289,8 +289,8 @@ describe("CvEditor", () => {
       .mockResolvedValueOnce({ html: "<article>Original</article>" })
       .mockResolvedValueOnce({ html: "<article>Melhorado</article>" })
       .mockResolvedValueOnce({ html: "<article>Original again</article>" });
-    const modifyCv = vi.fn().mockResolvedValue({ cv: improvedCv });
-    const api = { renderCv, modifyCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const streamModifyCv = vi.fn().mockResolvedValue({ cv: improvedCv });
+    const api = { renderCv, streamModifyCv, getSession: vi.fn() } as unknown as CvmakerApi;
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 
     render(
@@ -312,7 +312,7 @@ describe("CvEditor", () => {
     await user.click(screen.getByRole("button", { name: "Apply with AI" }));
 
     await waitFor(() => expect(screen.getByTitle("Final CV preview")).toHaveAttribute("srcdoc", "<article>Melhorado</article>"));
-    expect(modifyCv).toHaveBeenCalledWith(expect.objectContaining({ language: "pt" }));
+    expect(streamModifyCv).toHaveBeenCalledWith(expect.objectContaining({ language: "pt" }), expect.anything());
     expect(renderCv).toHaveBeenCalledWith(expect.objectContaining({ language: "pt" }));
 
     await user.click(screen.getByRole("button", { name: "Undo AI result" }));
@@ -443,9 +443,9 @@ describe("CvEditor", () => {
       experience: [], education: [], skills: [], languages: [],
     };
     const saveCvInput = vi.fn().mockResolvedValue({ id: "input-1" });
-    const importCv = vi.fn().mockResolvedValue({ cv: importedCv, importWorkflowId: "workflow-1" });
+    const streamImportCv = vi.fn().mockResolvedValue({ cv: importedCv, importWorkflowId: "workflow-1" });
     const renderCv = vi.fn().mockResolvedValue({ html: "<article>Imported CV</article>" });
-    const api = { saveCvInput, importCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const api = { saveCvInput, streamImportCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 
     render(
@@ -472,11 +472,11 @@ describe("CvEditor", () => {
     };
     let resolveImport!: (value: { cv: typeof importedCv; importWorkflowId: string }) => void;
     const saveCvInput = vi.fn().mockResolvedValue({ id: "input-1" });
-    const importCv = vi.fn(() => new Promise<{ cv: typeof importedCv; importWorkflowId: string }>((resolve) => {
+    const streamImportCv = vi.fn(() => new Promise<{ cv: typeof importedCv; importWorkflowId: string }>((resolve) => {
       resolveImport = resolve;
     }));
     const renderCv = vi.fn().mockResolvedValue({ html: "<article>Imported CV</article>" });
-    const api = { saveCvInput, importCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
+    const api = { saveCvInput, streamImportCv, renderCv, getSession: vi.fn() } as unknown as CvmakerApi;
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 
     const { container } = render(

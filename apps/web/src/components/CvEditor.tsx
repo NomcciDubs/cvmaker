@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState, type CSSProperties, type FormE
 import { flushSync } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { normalizeCvLinks, resolveCvLanguage, type CvData, type CvLanguage } from "@nomcci/cvmaker-domain";
-import type { CvmakerApi } from "../api/cvmaker";
+import { AiStreamError, type AiProgress, type CvmakerApi } from "../api/cvmaker";
 import type { Messages } from "../i18n/messages";
 import type { CvInputRecord, CvStyle, Locale, RenderCvRequest, SavedCvRecord } from "../types";
 import { extractPdfText } from "../pdf-import";
@@ -58,6 +58,7 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
   const [draftError, setDraftError] = useState(false);
   const [draftUserId, setDraftUserId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("actual");
+  const [aiProgress, setAiProgress] = useState<AiProgress | null>(null);
   const [stageDirection, setStageDirection] = useState<"forward" | "back">("forward");
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const previousStepRef = useRef<WizardStep>(state.step);
@@ -187,9 +188,9 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
     });
   }
   const importCv = useMutation({
-    mutationFn: async ({ description, name }: { description: string; name?: string }) => {
+    mutationFn: async ({ description, name, onProgress }: { description: string; name?: string; onProgress?: (progress: AiProgress) => void }) => {
       await api.saveCvInput({ content: description, name });
-      const imported = await api.importCv({ description, language: documentLanguage });
+      const imported = await api.streamImportCv({ description, language: documentLanguage }, { onProgress });
       const preview = await api.renderCv({
         cv: imported.cv,
         language: documentLanguage,
@@ -205,14 +206,14 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
     },
   });
   const applyAi = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ onProgress }: { onProgress?: (progress: AiProgress) => void } = {}) => {
       const combinedInstruction = [
         targetRole.trim() ? `Tailor this CV for the target role: ${targetRole.trim()}.` : "",
         instruction.trim(),
       ].filter(Boolean).join("\n");
       const consumedImportWorkflow = Boolean(state.importWorkflowId && state.importedOriginalCv);
       const result = consumedImportWorkflow
-        ? await api.improveImportedCv({
+        ? await api.streamImproveImportedCv({
           cv: state.cv,
           originalCv: state.importedOriginalCv!,
           importWorkflowId: state.importWorkflowId!,
@@ -220,13 +221,13 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
           instruction: combinedInstruction,
           jobDescription: jobDescription.trim() || undefined,
           language: aiTargetLanguage,
-        })
-        : await api.modifyCv({
+        }, { onProgress })
+        : await api.streamModifyCv({
           cv: state.cv,
           instruction: combinedInstruction,
           jobDescription: jobDescription.trim() || undefined,
           language: aiTargetLanguage,
-        });
+        }, { onProgress });
       const preview = await api.renderCv({ cv: result.cv, language: aiTargetLanguage, template: state.choice.template, style: state.choice.style });
       return { cv: result.cv, html: preview.html, consumedImportWorkflow };
     },
@@ -523,7 +524,10 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
               </form> : <form onSubmit={(event) => {
                 event.preventDefault();
                 const description = importText.trim();
-                if (description) importCv.mutate({ description, name: importName || undefined });
+                if (description) {
+                  setAiProgress(null);
+                  importCv.mutate({ description, name: importName || undefined, onProgress: setAiProgress });
+                }
               }}>
                 <div className="import-steps">
                   <div className="import-step">
@@ -562,7 +566,7 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
                   <button className="btn btn-primary" type="submit" disabled={!importText.trim() || isExtracting || importCv.isPending}>{importCv.isPending ? messages.importingCv : messages.importWithAi}</button>
                 </div>
                 {fileError && <p className="error" role="alert">{fileError}</p>}
-                {importCv.isError && <p className="error" role="alert">{messages.importError}</p>}
+                {importCv.isError && <p className="error" role="alert">{aiErrorMessage(importCv.error, messages)}</p>}
               </form>}
               </div>
             </div>
@@ -627,7 +631,10 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
               <div className="improve-grid">
                 <form onSubmit={(event) => {
                   event.preventDefault();
-                  if (targetRole.trim() || instruction.trim()) applyAi.mutate();
+                  if (targetRole.trim() || instruction.trim()) {
+                    setAiProgress(null);
+                    applyAi.mutate({ onProgress: setAiProgress });
+                  }
                 }}>
                   {state.importWorkflowId && <p className="allowance-note">{messages.importExtraUse}</p>}
                   <div className="improve-task">
@@ -647,7 +654,7 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
                       <button className="btn btn-secondary" type="button" onClick={() => undoAi.mutate()} disabled={!state.previousCv || undoAi.isPending}>{messages.undoAi}</button>
                       <button className="btn btn-primary" type="submit" disabled={(!targetRole.trim() && !instruction.trim()) || applyAi.isPending}>{applyAi.isPending ? messages.applyingAi : messages.applyAll}</button>
                     </div>
-                    {(applyAi.isError || undoAi.isError) && <p className="error" role="alert">{messages.aiError}</p>}
+                    {(applyAi.isError || undoAi.isError) && <p className="error" role="alert">{aiErrorMessage(applyAi.error ?? undoAi.error, messages)}</p>}
                   </div>
                   <div className="presentation-task">
                     <h3 className="task-heading">{messages.presentationTaskTitle}<span>{messages.presentationTaskHint}</span></h3>
@@ -746,13 +753,57 @@ export function CvEditor({ api, locale, messages, userId, userRole, toolsOpen = 
       </Sheet>
       {(importCv.isPending || applyAi.isPending) && (
         <div className="ai-loading-overlay" role="status">
-          <div className="ai-loading-card">
-            <span className="ai-loading-spinner" aria-hidden="true" />
-            <p>{importCv.isPending ? messages.importingCv : messages.applyingAi}</p>
-          </div>
+          <AiProgressOverlay
+            progress={aiProgress}
+            label={aiPhaseLabel(aiProgress, importCv.isPending ? messages.importingCv : messages.applyingAi, messages)}
+          />
         </div>
       )}
     </main>
+  );
+}
+
+function aiPhaseLabel(progress: AiProgress | null, fallback: string, messages: Messages): string {
+  switch (progress?.phase) {
+    case "generating": return messages.aiPhaseGenerating;
+    case "validating": return messages.aiPhaseValidating;
+    case "repairing": return messages.aiPhaseRepairing;
+    default: return fallback;
+  }
+}
+
+function aiErrorMessage(error: unknown, messages: Messages): string {
+  const code = error instanceof AiStreamError ? error.code : "";
+  switch (code) {
+    case "ai_timeout": return messages.aiTimeoutError;
+    case "ai_rate_limited": return messages.aiRateLimitedError;
+    case "ai_invalid_json": return messages.aiInvalidJsonError;
+    default: return messages.aiError;
+  }
+}
+
+function progressPercent(progress: AiProgress | null): number {
+  if (!progress) return 5;
+  if (progress.phase === "validating") return 90;
+  if (progress.phase === "repairing") return 95;
+  const ratio = 1 - Math.exp(-progress.characters / 2_500);
+  return Math.min(85, 5 + ratio * 80);
+}
+
+function AiProgressOverlay({ progress, label }: { progress: AiProgress | null; label: string }) {
+  const target = progressPercent(progress);
+  const [percent, setPercent] = useState(target);
+  useEffect(() => {
+    setPercent((current) => Math.max(current, target));
+  }, [target]);
+  return (
+    <div className="ai-loading-card">
+      <span className="ai-loading-spinner" aria-hidden="true" />
+      <p>{label}</p>
+      <div className="ai-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}>
+        <span className="ai-progress-fill" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
   );
 }
 

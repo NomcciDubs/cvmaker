@@ -62,4 +62,25 @@ describe("createApiClient", () => {
     expect(() => createApiClient("not a url")).toThrow("VITE_API_BASE");
     expect(() => createApiClient("https://example.com/api?token=x")).toThrow("VITE_API_BASE");
   });
+
+  it("parses server-sent events from a streaming response", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: progress\ndata: {"phase":"generating","characters":10}\n\n'));
+        controller.enqueue(encoder.encode('event: done\ndata: {"cv":{"personal_info":{}}}\n\n'));
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } })));
+
+    const client = createApiClient("");
+    const events: Array<{ event: string; data: string }> = [];
+    await client.postEventStream("/api/cv/import", { description: "x" }, (event) => events.push(event));
+
+    expect(events).toEqual([
+      { event: "progress", data: '{"phase":"generating","characters":10}' },
+      { event: "done", data: '{"cv":{"personal_info":{}}}' },
+    ]);
+  });
 });

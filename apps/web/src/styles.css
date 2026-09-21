@@ -1264,6 +1264,23 @@ html.scroll-locked body { position: fixed; left: 0; right: 0; width: 100%; }
   animation: card-in var(--dur-2) var(--ease) both;
 }
 .ai-loading-card p { color: var(--ink-2); font-size: .92rem; text-wrap: pretty; }
+.ai-progress {
+  width: 100%;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.ai-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 200ms var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-progress-fill { transition: none; }
+}
 .ai-loading-spinner {
   width: 44px;
   height: 44px;
