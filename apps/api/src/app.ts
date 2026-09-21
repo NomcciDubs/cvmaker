@@ -5,6 +5,8 @@ import type {
   AuthGateway,
   Clock,
   ContentHasher,
+  CvAiProgress,
+  CvAiProgressReporter,
   CvAiService,
   CvInputRepository,
   CvRenderer,
@@ -33,8 +35,9 @@ import {
   translateCvRequestSchema,
 } from "@nomcci/cvmaker-contracts";
 import { aiDailyLimitFor, pdfDailyLimitFor, type ApplicationInput, type CvData, type PdfQuotaSettings, type Principal, type SavedCvInput } from "@nomcci/cvmaker-domain";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
 
 export interface ApiDependencies {
@@ -322,18 +325,30 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
   app.post("/api/cv/import", async (context) => {
     const parsed = importCvRequestSchema.safeParse(await readJson(context.req.raw));
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
-    if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
-    const cv = await dependencies.ai.import(parsed.data.description, parsed.data.language);
     const principal = context.get("principal");
-    const workflowId = dependencies.ids.generate();
-    const expiresAt = new Date(dependencies.clock.now().getTime() + 24 * 60 * 60 * 1_000);
-    await dependencies.usage.createImportWorkflow(
-      principal.id,
-      workflowId,
-      await dependencies.hasher.hash(JSON.stringify(cv)),
-      expiresAt,
-    );
-    return context.json({ cv, importWorkflowId: workflowId });
+    if (!(await consumeAiUse(principal, dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
+
+    const createWorkflow = async (cv: CvData): Promise<string> => {
+      const workflowId = dependencies.ids.generate();
+      const expiresAt = new Date(dependencies.clock.now().getTime() + 24 * 60 * 60 * 1_000);
+      await dependencies.usage.createImportWorkflow(
+        principal.id,
+        workflowId,
+        await dependencies.hasher.hash(JSON.stringify(cv)),
+        expiresAt,
+      );
+      return workflowId;
+    };
+
+    if (!wantsEventStream(context)) {
+      const cv = await dependencies.ai.import(parsed.data.description, parsed.data.language);
+      return context.json({ cv, importWorkflowId: await createWorkflow(cv) });
+    }
+
+    return sseResponse(context, async (writer) => {
+      const cv = await dependencies.ai.import(parsed.data.description, parsed.data.language, writer.report);
+      await writer.done({ cv, importWorkflowId: await createWorkflow(cv) });
+    });
   });
 
   app.post("/api/cv/import-improve", async (context) => {
@@ -351,10 +366,18 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     }
 
     const cv = toDomainValue<CvData>(parsed.data.cv);
-    const improved = parsed.data.targetRole
-      ? await dependencies.ai.rewrite(cv, parsed.data.targetRole, parsed.data.jobDescription, parsed.data.language)
-      : await dependencies.ai.modify(cv, parsed.data.instruction!, parsed.data.jobDescription, parsed.data.language);
-    return context.json({ cv: preservePhoto(cv, improved), importWorkflowId: null });
+    const run = (onProgress?: CvAiProgressReporter) => parsed.data.targetRole
+      ? dependencies.ai.rewrite(cv, parsed.data.targetRole, parsed.data.jobDescription, parsed.data.language, onProgress)
+      : dependencies.ai.modify(cv, parsed.data.instruction!, parsed.data.jobDescription, parsed.data.language, onProgress);
+
+    if (!wantsEventStream(context)) {
+      return context.json({ cv: preservePhoto(cv, await run()), importWorkflowId: null });
+    }
+
+    return sseResponse(context, async (writer) => {
+      const improved = await run(writer.report);
+      await writer.done({ cv: preservePhoto(cv, improved), importWorkflowId: null });
+    });
   });
 
   app.post("/api/cv/rewrite", async (context) => {
@@ -376,13 +399,21 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
     if (!parsed.success) return context.json(validationError(parsed.error), 400);
     if (!(await consumeAiUse(context.get("principal"), dependencies))) return context.json({ error: "ai_limit_reached" }, 429);
     const source = toDomainValue<CvData>(parsed.data.cv);
-    const cv = await dependencies.ai.modify(
+    const run = (onProgress?: CvAiProgressReporter) => dependencies.ai.modify(
       source,
       parsed.data.instruction,
       parsed.data.jobDescription,
       parsed.data.language,
+      onProgress,
     );
-    return context.json({ cv: preservePhoto(source, cv) });
+
+    if (!wantsEventStream(context)) {
+      return context.json({ cv: preservePhoto(source, await run()) });
+    }
+
+    return sseResponse(context, async (writer) => {
+      await writer.done({ cv: preservePhoto(source, await run(writer.report)) });
+    });
   });
 
   app.post("/api/cv/translate", async (context) => {
@@ -444,6 +475,77 @@ function toDomainValue<T>(value: unknown): T {
 async function consumeAiUse(principal: Principal, dependencies: ApiDependencies): Promise<boolean> {
   const date = dependencies.clock.now().toISOString().slice(0, 10);
   return dependencies.usage.tryConsumeAiUse(principal.id, date, aiDailyLimitFor(principal.role));
+}
+
+const SSE_PROGRESS_INTERVAL_MS = 150;
+
+interface SseWriter {
+  send(event: string, data: unknown): Promise<void>;
+  report: CvAiProgressReporter;
+  done(data: unknown): Promise<void>;
+  error(cause: unknown): Promise<void>;
+}
+
+function wantsEventStream(context: Context): boolean {
+  return (context.req.header("accept") ?? "").includes("text/event-stream");
+}
+
+function sseResponse(context: Context, task: (writer: SseWriter) => Promise<void>): Response | Promise<Response> {
+  return streamSSE(context, async (stream) => {
+    const writer = createSseWriter(stream);
+    try {
+      await task(writer);
+    } catch (error) {
+      await writer.error(error);
+    }
+  });
+}
+
+function createSseWriter(stream: SSEStreamingApi): SseWriter {
+  let chain: Promise<void> = Promise.resolve();
+  let queued: CvAiProgress | null = null;
+  let lastProgressAt = 0;
+
+  const send = (event: string, data: unknown) => {
+    chain = chain.then(() => stream.writeSSE({ event, data: JSON.stringify(data) })).catch(() => undefined);
+    return chain;
+  };
+
+  const report: CvAiProgressReporter = (progress) => {
+    queued = progress;
+    const now = Date.now();
+    const isControl = progress.phase !== "generating" && progress.phase !== "repairing";
+    if (isControl || now - lastProgressAt >= SSE_PROGRESS_INTERVAL_MS) {
+      lastProgressAt = now;
+      const next = queued;
+      queued = null;
+      void send("progress", next);
+    }
+  };
+
+  return {
+    send,
+    report,
+    async done(data) {
+      if (queued) {
+        const next = queued;
+        queued = null;
+        void send("progress", next);
+      }
+      await send("done", data);
+    },
+    async error(cause) {
+      await send("error", { code: aiErrorCode(cause) });
+    },
+  };
+}
+
+function aiErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/timed out/i.test(message)) return "ai_timeout";
+  if (/chat model error 429/i.test(message)) return "ai_rate_limited";
+  if (/invalid cv json|unexpected token|json/i.test(message)) return "ai_invalid_json";
+  return "ai_error";
 }
 
 function preservePhoto(source: CvData, output: CvData): CvData {

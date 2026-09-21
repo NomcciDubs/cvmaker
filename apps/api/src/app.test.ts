@@ -265,6 +265,47 @@ describe("API boundaries", () => {
     );
   });
 
+  it("streams import progress and the final CV over server-sent events", async () => {
+    const result = fixture();
+    result.ai.import.mockImplementation(async (_description, _language, onProgress) => {
+      onProgress?.({ phase: "generating", characters: 5 });
+      onProgress?.({ phase: "validating", characters: 10 });
+      return validRenderRequest.cv;
+    });
+
+    const response = await result.app.request("/api/cv/import", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ description: "Resume text", language: "en" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const text = await response.text();
+    expect(text).toContain("event: progress");
+    expect(text).toContain('"phase":"validating"');
+    expect(text).toContain("event: done");
+    expect(text).toContain('"importWorkflowId":"00000000-0000-4000-8000-000000000002"');
+    expect(result.usage.createImportWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports AI failures as SSE error events", async () => {
+    const result = fixture();
+    result.ai.import.mockRejectedValue(new Error("Chat model timed out after 30000ms"));
+
+    const response = await result.app.request("/api/cv/import", {
+      method: "POST",
+      headers: { authorization: "Bearer valid", "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ description: "Resume text", language: "en" }),
+    });
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain("event: error");
+    expect(text).toContain('"code":"ai_timeout"');
+    expect(result.usage.createImportWorkflow).not.toHaveBeenCalled();
+  });
+
   it("uses the import allowance without daily quota and preserves the photo", async () => {
     const result = fixture();
     result.usage.tryConsumeImportUse.mockResolvedValueOnce(true);

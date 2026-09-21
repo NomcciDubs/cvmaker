@@ -173,11 +173,23 @@ export interface AiUsageProvider {
 }
 
 export interface CvAiService {
-  import(description: string, language: CvLanguage): Promise<CvData>;
-  rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData>;
-  modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData>;
-  translate(cv: CvData, language: CvLanguage): Promise<CvData>;
+  import(description: string, language: CvLanguage, onProgress?: CvAiProgressReporter): Promise<CvData>;
+  rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: CvLanguage, onProgress?: CvAiProgressReporter): Promise<CvData>;
+  modify(cv: CvData, instruction: string, jobDescription: string | undefined, language: CvLanguage, onProgress?: CvAiProgressReporter): Promise<CvData>;
+  translate(cv: CvData, language: CvLanguage, onProgress?: CvAiProgressReporter): Promise<CvData>;
 }
+
+export type CvAiPhase = "generating" | "repairing" | "validating";
+
+export interface CvAiProgress {
+  phase: CvAiPhase;
+  /** Characters received from the model so far for the current phase. */
+  characters: number;
+  /** Provider-reported token count when available. */
+  tokens?: number;
+}
+
+export type CvAiProgressReporter = (progress: CvAiProgress) => void;
 
 export type ChatMessageRole = "system" | "user" | "assistant";
 
@@ -192,8 +204,15 @@ export interface ChatModelRequest {
   responseFormat?: "json";
 }
 
+export interface ChatModelStreamChunk {
+  content: string;
+  tokens?: number;
+}
+
 export interface ChatModel {
   complete(request: ChatModelRequest): Promise<string>;
+  /** Optional token stream. Providers that lack streaming simply omit it. */
+  stream?(request: ChatModelRequest): AsyncIterable<ChatModelStreamChunk>;
 }
 
 export interface CvRenderer {

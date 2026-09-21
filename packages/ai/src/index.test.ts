@@ -149,3 +149,39 @@ describe("PortableCvAiService parsing and normalization", () => {
     expect(failingModel.complete).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("PortableCvAiService streaming", () => {
+  it("reports generation and validation progress from model chunks", async () => {
+    const json = JSON.stringify(cv);
+    const progress: Array<{ phase: string; characters: number; tokens?: number }> = [];
+    const model: ChatModel = {
+      complete: vi.fn(async () => json),
+      stream: async function* () {
+        yield { content: json.slice(0, 10) };
+        yield { content: json.slice(10), tokens: 42 };
+      },
+    };
+
+    const result = await new PortableCvAiService(model, { repairSuspiciousExperience: false })
+      .import("source", "en", (entry) => progress.push(entry));
+
+    expect(result.personal_info.full_name).toBe("Ada Lovelace");
+    expect(progress[0]).toEqual({ phase: "generating", characters: 10 });
+    expect(progress.at(-1)).toEqual({ phase: "validating", characters: json.length, tokens: 42 });
+    expect(model.complete).not.toHaveBeenCalled();
+  });
+
+  it("falls back to complete when the model cannot stream", async () => {
+    const json = JSON.stringify(cv);
+    const model = modelWith(json);
+    const progress: Array<{ phase: string; characters: number }> = [];
+
+    await new PortableCvAiService(model, { repairSuspiciousExperience: false })
+      .modify(cv, "Improve", undefined, "en", (entry) => progress.push(entry));
+
+    expect(progress).toEqual([
+      { phase: "generating", characters: json.length },
+      { phase: "validating", characters: json.length },
+    ]);
+  });
+});

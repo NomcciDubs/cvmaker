@@ -1,4 +1,4 @@
-import type { ChatModel, ChatModelRequest } from "@nomcci/cvmaker-application";
+import type { ChatModel, ChatModelRequest, ChatModelStreamChunk } from "@nomcci/cvmaker-application";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_ERROR_TEXT = 1_024;
@@ -50,14 +50,7 @@ export class OpenAiCompatibleChatModel implements ChatModel {
         method: "POST",
         headers,
         signal: controller.signal,
-        body: JSON.stringify({
-          model: this.model,
-          messages: request.messages,
-          ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-          ...(request.responseFormat === "json" && this.supportsJsonMode
-            ? { response_format: { type: "json_object" } }
-            : {}),
-        }),
+        body: this.requestBody(request),
       });
 
       if (!response.ok) {
@@ -81,6 +74,106 @@ export class OpenAiCompatibleChatModel implements ChatModel {
       clearTimeout(timeout);
     }
   }
+
+  async *stream(request: ChatModelRequest): AsyncIterable<ChatModelStreamChunk> {
+    const controller = new AbortController();
+    const idleMs = Math.min(this.timeoutMs, 15_000);
+    let abortReason: "idle" | "total" | null = null;
+    let idleTimer = setTimeout(() => { abortReason = "idle"; controller.abort(); }, idleMs);
+    const totalTimer = setTimeout(() => { abortReason = "total"; controller.abort(); }, this.timeoutMs);
+    const resetIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { abortReason = "idle"; controller.abort(); }, idleMs);
+    };
+    const headers: Record<string, string> = { "content-type": "application/json", ...this.extraHeaders };
+    if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
+
+    try {
+      const response = await this.fetch(this.endpoint, {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body: this.requestBody(request, true),
+      });
+
+      if (!response.ok) {
+        const detail = (await response.text()).slice(0, MAX_ERROR_TEXT);
+        throw new Error(`Chat model error ${response.status}${detail ? `: ${detail}` : ""}`);
+      }
+      if (!response.body) throw new Error("Chat model returned no stream body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finished = false;
+      while (!finished) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        resetIdle();
+        buffer += decoder.decode(value, { stream: true });
+
+        let newline = buffer.indexOf("\n");
+        while (newline >= 0) {
+          const line = buffer.slice(0, newline).replace(/\r$/, "");
+          buffer = buffer.slice(newline + 1);
+          newline = buffer.indexOf("\n");
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice("data:".length).trim();
+          if (!payload) continue;
+          if (payload === "[DONE]") {
+            finished = true;
+            break;
+          }
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+          const chunk = streamChunk(parsed);
+          if (chunk) yield chunk;
+        }
+      }
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const waited = abortReason === "idle" ? idleMs : this.timeoutMs;
+        throw new Error(`Chat model timed out after ${waited}ms${abortReason === "idle" ? " without data" : ""}`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(idleTimer);
+      clearTimeout(totalTimer);
+    }
+  }
+
+  private requestBody(request: ChatModelRequest, stream = false): string {
+    return JSON.stringify({
+      model: this.model,
+      messages: request.messages,
+      ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+      ...(stream ? { stream: true } : {}),
+      ...(request.responseFormat === "json" && this.supportsJsonMode
+        ? { response_format: { type: "json_object" } }
+        : {}),
+    });
+  }
+}
+
+function streamChunk(data: unknown): ChatModelStreamChunk | null {
+  if (!data || typeof data !== "object") return null;
+  const choices = (data as { choices?: unknown }).choices;
+  const usage = (data as { usage?: unknown }).usage;
+  const tokens = usage && typeof usage === "object" && typeof (usage as { completion_tokens?: unknown }).completion_tokens === "number"
+    ? (usage as { completion_tokens: number }).completion_tokens
+    : undefined;
+
+  let content = "";
+  if (Array.isArray(choices)) {
+    const delta = (choices[0] as { delta?: { content?: unknown } } | undefined)?.delta?.content;
+    if (typeof delta === "string") content = delta;
+  }
+  if (!content && tokens === undefined) return null;
+  return tokens === undefined ? { content } : { content, tokens };
 }
 
 function responseContent(data: unknown): string {

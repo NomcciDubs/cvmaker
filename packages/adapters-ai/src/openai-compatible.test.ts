@@ -87,4 +87,58 @@ describe("OpenAiCompatibleChatModel", () => {
     await expect(model.complete(request)).rejects.toThrow("timed out after 5ms");
     expect((fetch.mock.calls[0]![1]?.signal as AbortSignal).aborted).toBe(true);
   });
+
+  it("streams content deltas and reports usage tokens across split chunks", async () => {
+    const fetch = vi.fn(async () => sseResponse([
+      'data: {"choices":[{"del',
+      'ta":{"content":"Hel"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"!"}}],"usage":{"completion_tokens":3}}\n\n',
+      "data: [DONE]\n\n",
+    ]));
+    const model = new OpenAiCompatibleChatModel({
+      baseUrl: "http://model.example/v1",
+      model: "m",
+      supportsJsonMode: true,
+      fetch,
+    });
+
+    const chunks = [];
+    for await (const chunk of model.stream(request)) chunks.push(chunk);
+
+    expect(chunks).toEqual([
+      { content: "Hel" },
+      { content: "lo" },
+      { content: "!", tokens: 3 },
+    ]);
+    const init = fetch.mock.calls[0]![1];
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "m",
+      messages: request.messages,
+      temperature: 0.2,
+      stream: true,
+      response_format: { type: "json_object" },
+    });
+  });
+
+  it("surfaces provider errors while streaming", async () => {
+    const fetch = vi.fn(async () => new Response("rate limited", { status: 429 }));
+    const model = new OpenAiCompatibleChatModel({ baseUrl: "http://model.example/v1", model: "m", fetch });
+
+    const consume = async () => {
+      for await (const _chunk of model.stream(request)) void _chunk;
+    };
+    await expect(consume()).rejects.toThrow("Chat model error 429");
+  });
 });
+
+function sseResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
