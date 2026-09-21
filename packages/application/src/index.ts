@@ -132,6 +132,46 @@ export interface AdminMetricsRepository {
   getMetrics(): Promise<AdminMetrics>;
 }
 
+export interface AiUsageModel {
+  model: string;
+  provider: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  cost: number;
+  byokCost: number;
+}
+
+export interface AiUsageDay {
+  date: string;
+  requests: number;
+  cost: number;
+  byokCost: number;
+}
+
+/**
+ * Provider-neutral snapshot of AI spend. `cost` is what the gateway charged,
+ * `byokCost` is what the upstream provider charged when bring-your-own-key is
+ * active. `models`/`days` are only populated when the configured credentials
+ * allow reading per-endpoint analytics.
+ */
+export interface AiUsageSnapshot {
+  provider: string;
+  currency: string;
+  available: boolean;
+  perModelAvailable: boolean;
+  credits: { total: number | null; used: number | null; remaining: number | null };
+  spend: { daily: number; weekly: number; monthly: number };
+  byokSpend: { daily: number; weekly: number; monthly: number };
+  models: AiUsageModel[];
+  days: AiUsageDay[];
+  updatedAt: string;
+}
+
+export interface AiUsageProvider {
+  getUsage(): Promise<AiUsageSnapshot | null>;
+}
+
 export interface CvAiService {
   import(description: string, language: CvLanguage): Promise<CvData>;
   rewrite(cv: CvData, targetRole: string, jobDescription: string | undefined, language: CvLanguage): Promise<CvData>;
@@ -180,6 +220,7 @@ export interface ApplicationServices {
   pdfArchives: PdfArchiveRepository;
   pdfQuotas: PdfQuotaSettingsRepository;
   adminMetrics: AdminMetricsRepository;
+  aiUsage: AiUsageProvider;
   ai: CvAiService;
   renderer: CvRenderer;
   pdf: PdfGenerator;

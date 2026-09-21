@@ -107,6 +107,36 @@ export interface AdminMetrics {
   }>;
 }
 
+export interface AiUsageModel {
+  model: string;
+  provider: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  cost: number;
+  byokCost: number;
+}
+
+export interface AiUsageDay {
+  date: string;
+  requests: number;
+  cost: number;
+  byokCost: number;
+}
+
+export interface AiUsage {
+  provider: string;
+  currency: string;
+  available: boolean;
+  perModelAvailable: boolean;
+  credits: { total: number | null; used: number | null; remaining: number | null };
+  spend: { daily: number; weekly: number; monthly: number };
+  byokSpend: { daily: number; weekly: number; monthly: number };
+  models: AiUsageModel[];
+  days: AiUsageDay[];
+  updatedAt: string;
+}
+
 export interface PdfQuotaSettings {
   defaultDaily: number;
   friendDaily: number;

@@ -15,6 +15,7 @@ import {
   NodeClock,
   NodeIdGenerator,
   NodeSha256Hasher,
+  UnavailableAiUsageProvider,
 } from "@nomcci/cvmaker-adapters-node";
 import { OpenAiChatModel, OpenAiCompatibleChatModel, OpenRouterChatModel } from "@nomcci/cvmaker-adapters-ai";
 import { createDatabaseRepositories, type ClosableDatabaseRepositories } from "@nomcci/cvmaker-adapters-database";
@@ -43,6 +44,7 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
     pdfArchives: persistent?.pdfArchives ?? new InMemoryPdfArchiveRepository(),
     pdfQuotas: persistent?.pdfQuotas ?? new InMemoryPdfQuotaSettingsRepository(),
     adminMetrics: persistent?.adminMetrics ?? new FixtureAdminMetricsRepository(),
+    aiUsage: new UnavailableAiUsageProvider(),
     ai: createCvAiService(process.env),
     renderer: { render: renderCvHtml },
     pdf: new UnsupportedDevelopmentPdfGenerator(),
@@ -61,6 +63,7 @@ export function createDevelopmentComposition(options: { objectRoot?: string; ena
     pdfArchives: services.pdfArchives,
     pdfQuotas: services.pdfQuotas,
     adminMetrics: services.adminMetrics,
+    aiUsage: services.aiUsage,
     renderer: services.renderer,
     pdf: services.pdf,
     objects: services.objects,

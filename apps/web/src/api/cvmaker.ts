@@ -1,6 +1,6 @@
 import type { ApiClient } from "./client";
 import type { SavedCvInput } from "@nomcci/cvmaker-domain";
-import type { AdminMetrics, ApplicationRecord, ApplicationSnapshot, CvInputRecord, ExportPdfResponse, ImportCvRequest, ImportCvResponse, ImportImproveRequest, ModifyCvRequest, PdfArchiveItem, PdfQuotaSettings, PhotoRecord, RenderCvRequest, SavedCvRecord, SavedPhoto, Session } from "../types";
+import type { AdminMetrics, AiUsage, ApplicationRecord, ApplicationSnapshot, CvInputRecord, ExportPdfResponse, ImportCvRequest, ImportCvResponse, ImportImproveRequest, ModifyCvRequest, PdfArchiveItem, PdfQuotaSettings, PhotoRecord, RenderCvRequest, SavedCvRecord, SavedPhoto, Session } from "../types";
 
 export function createCvmakerApi(client: ApiClient) {
   return {
@@ -30,6 +30,7 @@ export function createCvmakerApi(client: ApiClient) {
     trackApplication: (body: ApplicationSnapshot) =>
       client.post<{ id: string }, ApplicationSnapshot>("/api/applications", body),
     getAdminMetrics: () => client.get<{ metrics: AdminMetrics }>("/api/admin/metrics"),
+    getAiUsage: () => client.get<{ usage: AiUsage | null }>("/api/admin/ai-usage"),
     getPdfLimits: () => client.get<{ limits: PdfQuotaSettings }>("/api/admin/pdf-limits"),
     updatePdfLimits: (body: PdfQuotaSettings) =>
       client.post<{ limits: PdfQuotaSettings }, PdfQuotaSettings>("/api/admin/pdf-limits", body),

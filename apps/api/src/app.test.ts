@@ -73,6 +73,7 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
       recentApplications: [],
     })),
   };
+  const aiUsage = { getUsage: vi.fn(async () => null) };
   const usage = {
     getAiUsage: vi.fn(async () => 0),
     tryConsumeAiUse: vi.fn(),
@@ -105,6 +106,7 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
       pdfArchives,
       pdfQuotas,
       adminMetrics,
+      aiUsage,
       renderer,
       pdf,
       objects,
@@ -122,6 +124,7 @@ function fixture(overrides: { auth?: AuthGateway; cvs?: CvRepository; renderer?:
     pdfArchives,
     pdfQuotas,
     adminMetrics,
+    aiUsage,
     renderer,
     pdf,
     objects,
@@ -393,11 +396,20 @@ describe("API boundaries", () => {
     expect(forbiddenResponse.status).toBe(403);
     expect(forbidden.adminMetrics.getMetrics).not.toHaveBeenCalled();
 
+    const forbiddenUsage = await forbidden.app.request("/api/admin/ai-usage", { headers: { authorization: "Bearer valid" } });
+    expect(forbiddenUsage.status).toBe(403);
+    expect(forbidden.aiUsage.getUsage).not.toHaveBeenCalled();
+
     const admin = { ...principal, role: "SUPER_ADMIN" };
     const result = fixture({ auth: { authenticate: vi.fn(async () => admin) } });
     const metricsResponse = await result.app.request("/api/admin/metrics", { headers: { authorization: "Bearer valid" } });
     expect(metricsResponse.status).toBe(200);
     expect(result.adminMetrics.getMetrics).toHaveBeenCalledOnce();
+
+    const usageResponse = await result.app.request("/api/admin/ai-usage", { headers: { authorization: "Bearer valid" } });
+    expect(usageResponse.status).toBe(200);
+    expect(await usageResponse.json()).toEqual({ usage: null });
+    expect(result.aiUsage.getUsage).toHaveBeenCalledOnce();
 
     const limits = { defaultDaily: 3, friendDaily: 20, superAdminDaily: null, maxArchivedPdfs: 20, maxArchivedPdfBytes: 26_214_400 };
     const limitsResponse = await result.app.request("/api/admin/pdf-limits", {

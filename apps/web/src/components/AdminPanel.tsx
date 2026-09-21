@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CvmakerApi } from "../api/cvmaker";
 import type { Messages } from "../i18n/messages";
-import type { Locale, PdfQuotaSettings } from "../types";
+import type { AiUsage, Locale, PdfQuotaSettings } from "../types";
 
 const BYTES_PER_MIB = 1_048_576;
 
@@ -17,6 +17,7 @@ export function AdminPanel({ api, messages, locale, userRole }: AdminPanelProps)
   const queryClient = useQueryClient();
   const metrics = useQuery({ queryKey: ["admin-metrics"], queryFn: api.getAdminMetrics, enabled: userRole === "SUPER_ADMIN" });
   const limits = useQuery({ queryKey: ["admin-pdf-limits"], queryFn: api.getPdfLimits, enabled: userRole === "SUPER_ADMIN" });
+  const usage = useQuery({ queryKey: ["admin-ai-usage"], queryFn: api.getAiUsage, enabled: userRole === "SUPER_ADMIN" });
   const [form, setForm] = useState({ defaultDaily: "", friendDaily: "", superAdminDaily: "", maxArchivedPdfs: "", maxArchiveSizeMib: "" });
   const [initialized, setInitialized] = useState(false);
   if (limits.data && !initialized) {
@@ -82,6 +83,16 @@ export function AdminPanel({ api, messages, locale, userRole }: AdminPanelProps)
             ))}
           </>
         )}
+        {usage.data && (
+          <div className="ai-usage">
+            <h3>{messages.aiUsageTitle}</h3>
+            <p className="library-hint">{messages.aiUsageHint}</p>
+            {usage.data.usage === null
+              ? <p className="empty-library">{messages.aiUsageUnavailable}</p>
+              : <AiUsageView usage={usage.data.usage} locale={locale} messages={messages} />}
+          </div>
+        )}
+        {usage.isError && <p className="error" role="alert">{messages.aiUsageUnavailable}</p>}
         {limits.data && (
           <form
             className="tracker-form"
@@ -115,4 +126,80 @@ export function AdminPanel({ api, messages, locale, userRole }: AdminPanelProps)
 function formatDate(value: string, locale: Locale): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
+}
+
+function formatCurrency(value: number, currency: string, locale: Locale): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
+interface AiUsageViewProps {
+  usage: AiUsage;
+  locale: Locale;
+  messages: Messages;
+}
+
+function AiUsageView({ usage, locale, messages }: AiUsageViewProps) {
+  const modelMax = Math.max(0, ...usage.models.map((entry) => entry.cost + entry.byokCost));
+  const dayMax = Math.max(0, ...usage.days.map((entry) => entry.cost + entry.byokCost));
+  return (
+    <div className="ai-usage-view">
+      <div className="metric-grid">
+        {usage.credits.total !== null && (
+          <div><strong>{formatCurrency(usage.credits.total, usage.currency, locale)}</strong><small>{messages.aiUsageCreditsTotal}</small></div>
+        )}
+        <div><strong>{formatCurrency(usage.spend.monthly + usage.byokSpend.monthly, usage.currency, locale)}</strong><small>{messages.aiUsageMonthly}</small></div>
+        <div><strong>{formatCurrency(usage.byokSpend.daily, usage.currency, locale)}</strong><small>{messages.aiUsageByokTitle} · {messages.aiUsageDaily}</small></div>
+      </div>
+      <div className="ai-usage-columns">
+        <div>
+          <h4>{messages.aiUsageSpendTitle}</h4>
+          <p className="metric-row"><span>{messages.aiUsageDaily}</span><span>{formatCurrency(usage.spend.daily, usage.currency, locale)}</span></p>
+          <p className="metric-row"><span>{messages.aiUsageWeekly}</span><span>{formatCurrency(usage.spend.weekly, usage.currency, locale)}</span></p>
+          <p className="metric-row"><span>{messages.aiUsageMonthly}</span><span>{formatCurrency(usage.spend.monthly, usage.currency, locale)}</span></p>
+        </div>
+        <div>
+          <h4>{messages.aiUsageByokTitle}</h4>
+          <p className="metric-row"><span>{messages.aiUsageDaily}</span><span>{formatCurrency(usage.byokSpend.daily, usage.currency, locale)}</span></p>
+          <p className="metric-row"><span>{messages.aiUsageWeekly}</span><span>{formatCurrency(usage.byokSpend.weekly, usage.currency, locale)}</span></p>
+          <p className="metric-row"><span>{messages.aiUsageMonthly}</span><span>{formatCurrency(usage.byokSpend.monthly, usage.currency, locale)}</span></p>
+        </div>
+      </div>
+      <h4>{messages.aiUsageByModel}</h4>
+      {usage.models.length === 0
+        ? <p className="empty-library">{usage.perModelAvailable ? messages.aiUsageEmptyModels : messages.aiUsagePerModelHint}</p>
+        : usage.models.map((entry) => {
+            const total = entry.cost + entry.byokCost;
+            return (
+              <div className="ai-usage-bar" key={`${entry.provider}-${entry.model}`}>
+                <span className="ai-usage-bar-label">{entry.model}</span>
+                <span className="ai-usage-bar-track">
+                  <span className="ai-usage-bar-fill" style={{ width: `${modelMax > 0 ? (total / modelMax) * 100 : 0}%` }} />
+                </span>
+                <span className="ai-usage-bar-value">{formatCurrency(total, usage.currency, locale)}</span>
+              </div>
+            );
+          })}
+      {usage.days.length > 0 && (
+        <>
+          <h4>{messages.aiUsageByDay}</h4>
+          <div className="ai-usage-days">
+            {usage.days.map((entry) => {
+              const total = entry.cost + entry.byokCost;
+              return (
+                <div className="ai-usage-day" key={entry.date} title={`${entry.date} · ${formatCurrency(total, usage.currency, locale)}`}>
+                  <span className="ai-usage-day-fill" style={{ height: `${dayMax > 0 ? (total / dayMax) * 100 : 0}%` }} />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+      <p className="library-hint">{messages.aiUsageUpdated}: {formatDate(usage.updatedAt, locale)}</p>
+    </div>
+  );
 }

@@ -5,6 +5,7 @@ import { isAbsolute, resolve, sep } from "node:path";
 import type {
   AdminMetrics,
   AdminMetricsRepository,
+  AiUsageProvider,
   ApplicationRecord,
   ApplicationRepository,
   AuthGateway,
@@ -379,6 +380,16 @@ export class FixtureAdminMetricsRepository implements AdminMetricsRepository {
 
   async getMetrics(): Promise<AdminMetrics> {
     return structuredClone(this.metrics);
+  }
+}
+
+/**
+ * Default portable AI usage provider. Provider-specific forks replace this with
+ * an adapter that reads real spend data from their AI gateway.
+ */
+export class UnavailableAiUsageProvider implements AiUsageProvider {
+  async getUsage(): Promise<null> {
+    return null;
   }
 }
 

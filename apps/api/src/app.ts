@@ -1,5 +1,6 @@
 import type {
   AdminMetricsRepository,
+  AiUsageProvider,
   ApplicationRepository,
   AuthGateway,
   Clock,
@@ -45,6 +46,7 @@ export interface ApiDependencies {
   pdfArchives: PdfArchiveRepository;
   pdfQuotas: PdfQuotaSettingsRepository;
   adminMetrics: AdminMetricsRepository;
+  aiUsage: AiUsageProvider;
   renderer: CvRenderer;
   pdf: PdfGenerator;
   objects: ObjectStore;
@@ -204,6 +206,11 @@ export function createApi(dependencies: ApiDependencies): Hono<{ Variables: Vari
   app.get("/api/admin/metrics", async (context) => {
     if (context.get("principal").role !== "SUPER_ADMIN") return context.json({ error: "forbidden" }, 403);
     return context.json({ metrics: await dependencies.adminMetrics.getMetrics() });
+  });
+
+  app.get("/api/admin/ai-usage", async (context) => {
+    if (context.get("principal").role !== "SUPER_ADMIN") return context.json({ error: "forbidden" }, 403);
+    return context.json({ usage: await dependencies.aiUsage.getUsage() });
   });
 
   app.get("/api/admin/pdf-limits", async (context) => {
